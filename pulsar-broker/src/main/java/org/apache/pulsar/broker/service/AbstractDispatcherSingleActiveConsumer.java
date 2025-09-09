@@ -104,34 +104,37 @@ public abstract class AbstractDispatcherSingleActiveConsumer extends AbstractBas
      */
     protected boolean pickAndScheduleActiveConsumer() {
         checkArgument(!consumers.isEmpty());
-        AtomicBoolean hasPriorityConsumer = new AtomicBoolean(false);
-        consumers.sort((c1, c2) -> {
-            int priority = c1.getPriorityLevel() - c2.getPriorityLevel();
-            if (priority != 0) {
-                hasPriorityConsumer.set(true);
-                return priority;
-            }
-            return c1.consumerName().compareTo(c2.consumerName());
-        });
+        int index;
+        if (partitionIndex >= 0) {
+            AtomicBoolean hasPriorityConsumer = new AtomicBoolean(false);
+            consumers.sort((c1, c2) -> {
+                int priority = c1.getPriorityLevel() - c2.getPriorityLevel();
+                if (priority != 0) {
+                    hasPriorityConsumer.set(true);
+                    return priority;
+                }
+                return c1.consumerName().compareTo(c2.consumerName());
+            });
 
-        int consumersSize = consumers.size();
-        // find number of consumers which are having the highest priorities. so partitioned-topic assignment happens
-        // evenly across highest priority consumers
-        if (hasPriorityConsumer.get()) {
-            int highestPriorityLevel = consumers.get(0).getPriorityLevel();
-            for (int i = 0; i < consumers.size(); i++) {
-                if (highestPriorityLevel != consumers.get(i).getPriorityLevel()) {
-                    consumersSize = i;
-                    break;
+            int consumersSize = consumers.size();
+            // find number of consumers which are having the highest priorities. so partitioned-topic assignment happens
+            // evenly across highest priority consumers
+            if (hasPriorityConsumer.get()) {
+                int highestPriorityLevel = consumers.get(0).getPriorityLevel();
+                for (int i = 0; i < consumers.size(); i++) {
+                    if (highestPriorityLevel != consumers.get(i).getPriorityLevel()) {
+                        consumersSize = i;
+                        break;
+                    }
                 }
             }
+            index = !serviceConfig.isActiveConsumerFailoverConsistentHashing() ? partitionIndex % consumersSize :
+                    peekConsumerIndexFromHashRing(makeHashRing(consumersSize));
+        } else {
+            index = 0;
         }
-        int index = partitionIndex >= 0 && !serviceConfig.isActiveConsumerFailoverConsistentHashing()
-                ? partitionIndex % consumersSize
-                : peekConsumerIndexFromHashRing(makeHashRing(consumersSize));
 
         Consumer selectedConsumer = consumers.get(index);
-
         if (selectedConsumer == activeConsumer) {
             // Active consumer did not change. Do nothing at this point
             return false;
