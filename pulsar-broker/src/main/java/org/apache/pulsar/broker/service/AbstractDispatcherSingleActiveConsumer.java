@@ -116,7 +116,7 @@ public abstract class AbstractDispatcherSingleActiveConsumer extends AbstractBas
 
         int consumersSize = consumers.size();
         // find number of consumers which are having the highest priorities. so partitioned-topic assignment happens
-        // evenly across highest priority consumers
+        // evenly across highest priority consumers, comment to commit
         if (hasPriorityConsumer.get()) {
             int highestPriorityLevel = consumers.get(0).getPriorityLevel();
             for (int i = 0; i < consumers.size(); i++) {
