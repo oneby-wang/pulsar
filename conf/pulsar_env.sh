@@ -66,7 +66,8 @@ done
 
 # Garbage collection options
 if [ -z "$PULSAR_GC" ]; then
-  PULSAR_GC="-XX:+PerfDisableSharedMem -XX:+AlwaysPreTouch"
+  # PULSAR_GC="-XX:+PerfDisableSharedMem -XX:+AlwaysPreTouch"
+  PULSAR_GC="-XX:+AlwaysPreTouch"
   if [[ $JAVA_MAJOR_VERSION -eq 21 || $JAVA_MAJOR_VERSION -eq 22 ]]; then
     PULSAR_GC="-XX:+UseZGC -XX:+ZGenerational ${PULSAR_GC}"
   else
