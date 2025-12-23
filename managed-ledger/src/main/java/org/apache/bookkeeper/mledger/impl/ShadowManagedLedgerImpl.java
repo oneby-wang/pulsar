@@ -343,7 +343,7 @@ public class ShadowManagedLedgerImpl extends ManagedLedgerImpl {
                             currentLedgerSize = 0;
                             initLastConfirmedEntry();
                             updateLedgersIdsComplete(null);
-                            maybeUpdateCursorBeforeTrimmingConsumedLedger();
+                            maybeUpdateCursorBeforeTrimmingConsumedLedger(false);
                         } else if (isNoSuchLedgerExistsException(rc)) {
                             log.warn("[{}] Source ledger not found: {}", name, lastLedgerId);
                             ledgers.remove(lastLedgerId);

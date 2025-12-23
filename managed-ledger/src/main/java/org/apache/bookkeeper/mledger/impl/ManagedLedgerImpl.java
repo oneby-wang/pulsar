@@ -1765,7 +1765,7 @@ public class ManagedLedgerImpl implements ManagedLedger, CreateCallback {
                     metadataMutex.unlock();
 
                     // May need to update the cursor position
-                    maybeUpdateCursorBeforeTrimmingConsumedLedger();
+                    maybeUpdateCursorBeforeTrimmingConsumedLedger(false);
                 }
 
                 @Override
@@ -2709,9 +2709,13 @@ public class ManagedLedgerImpl implements ManagedLedger, CreateCallback {
         this.waitingEntryCallBacks.add(cb);
     }
 
-    public void maybeUpdateCursorBeforeTrimmingConsumedLedger() {
+    public CompletableFuture<Void> maybeUpdateCursorBeforeTrimmingConsumedLedger(boolean updateMarkDeletedPosition) {
+        List<CompletableFuture<Void>> cursorMarkDeleteFutures = new ArrayList<>();
         for (ManagedCursor cursor : cursors) {
-            // snapshot cursor.getMarkDeletedPosition() into a local variable to avoid race condition.
+            CompletableFuture<Void> future = new CompletableFuture<>();
+            cursorMarkDeleteFutures.add(future);
+
+            // Snapshot cursor.getMarkDeletedPosition() into a local variable to avoid race condition.
             Position markDeletedPosition = PositionFactory.create(cursor.getMarkDeletedPosition());
             Position lastAckedPosition = cursor.getPersistentMarkDeletedPosition() != null
                     ? cursor.getPersistentMarkDeletedPosition() : markDeletedPosition;
@@ -2729,34 +2733,50 @@ public class ManagedLedgerImpl implements ManagedLedger, CreateCallback {
                     log.debug("No need to reset cursor: {}, current ledger is the last ledger.", cursor);
                 }
             } else {
-                // TODO no ledger exists, should we move cursor mark deleted position to nextPointedLedger:-1 ?
+                // Should not happen. Sample case: opening managed ledger with ledgers:(ledgerId:-1), recovery read
+                // will create a new ledger: (ledgerId+1:-1), in this case curPointedLedger==null. Since user should
+                // not mark delete entryId:(ledgerId:-1), so this case is not possible in normal case.
                 log.warn("Cursor: {} does not exist in the managed-ledger.", cursor);
             }
 
             if (lastAckedPosition.compareTo(markDeletedPosition) > 0) {
-                Position finalPosition = lastAckedPosition;
-                log.info("Reset cursor:{} to {} since ledger consumed completely", cursor, lastAckedPosition);
-                // TODO If PR https://github.com/apache/pulsar/pull/25087 is needed, maybe we should make
-                // maybeUpdateCursorBeforeTrimmingConsumedLedger a callback method too to avoid race condition.
-                cursor.asyncMarkDelete(lastAckedPosition, cursor.getProperties(),
-                    new MarkDeleteCallback() {
+                if (updateMarkDeletedPosition) {
+                    Position finalPosition = lastAckedPosition;
+                    log.info("Mark delete cursor:{} to {} since ledger consumed completely", cursor, lastAckedPosition);
+                    cursor.asyncMarkDelete(lastAckedPosition, cursor.getProperties(), new MarkDeleteCallback() {
                         @Override
                         public void markDeleteComplete(Object ctx) {
-                            log.info("Successfully persisted cursor position for cursor:{} to {}",
-                                    cursor, finalPosition);
+                            log.info("Successfully persisted cursor position for cursor:{} to {}", cursor,
+                                    finalPosition);
+                            future.complete(null);
                         }
 
                         @Override
                         public void markDeleteFailed(ManagedLedgerException exception, Object ctx) {
-                            log.warn("Failed to reset cursor: {} from {} to {}. Trimming thread will retry next time.",
-                                    cursor, cursor.getMarkDeletedPosition(), finalPosition, exception);
+                            log.warn("Failed to mark delete cursor: {} from {} to {}.", cursor,
+                                    cursor.getMarkDeletedPosition(), finalPosition, exception);
+                            future.completeExceptionally(exception);
                         }
                     }, null);
+                } else {
+                    try {
+                        log.info("Reset cursor:{} to {} since ledger consumed completely", cursor, lastAckedPosition);
+                        onCursorMarkDeletePositionUpdated((ManagedCursorImpl) cursor, lastAckedPosition);
+                        future.complete(null);
+                    } catch (Exception e) {
+                        log.warn("Failed to reset cursor: {} from {} to {}. Trimming thread will retry next time.",
+                                cursor, cursor.getMarkDeletedPosition(), lastAckedPosition);
+                        log.warn("Caused by", e);
+                        future.completeExceptionally(e);
+                    }
+                }
             } else {
-                log.warn("Trying to mark delete an already mark-deleted position. Current mark-delete: {} -- attempted"
-                        + " mark delete: {}", markDeletedPosition, lastAckedPosition);
+                log.warn("Trying to update cursor to an already mark-deleted position. Current mark-delete:"
+                        + " {} -- attempted position: {}", markDeletedPosition, lastAckedPosition);
+                future.complete(null);
             }
         }
+        return FutureUtil.waitForAll(cursorMarkDeleteFutures);
     }
 
     private void trimConsumedLedgersInBackground() {
