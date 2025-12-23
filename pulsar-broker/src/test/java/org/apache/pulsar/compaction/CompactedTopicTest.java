@@ -414,7 +414,7 @@ public class CompactedTopicTest extends MockedPulsarServiceBaseTest {
         Assert.assertTrue(topicRef.isPresent());
         PersistentTopic persistentTopic = (PersistentTopic) topicRef.get();
         ManagedLedgerImpl managedLedger = (ManagedLedgerImpl) persistentTopic.getManagedLedger();
-        managedLedger.maybeUpdateCursorBeforeTrimmingConsumedLedger();
+        managedLedger.maybeUpdateCursorBeforeTrimmingConsumedLedger(false);
 
         Awaitility.await().untilAsserted(() -> {
             Assert.assertEquals(managedLedger.getCurrentLedgerEntries(), 0);

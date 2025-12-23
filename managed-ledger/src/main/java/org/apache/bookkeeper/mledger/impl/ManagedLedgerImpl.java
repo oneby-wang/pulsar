@@ -2733,9 +2733,10 @@ public class ManagedLedgerImpl implements ManagedLedger, CreateCallback {
                     log.debug("No need to reset cursor: {}, current ledger is the last ledger.", cursor);
                 }
             } else {
-                // Should not happen. Sample case: opening managed ledger with ledgers:(ledgerId:-1), recovery read
-                // will create a new ledger: (ledgerId+1:-1), in this case curPointedLedger==null. Since user should
-                // not mark delete entryId:(ledgerId:-1), so this case is not possible in normal case.
+                // TODO curPointedLedger==null, should we move cursor mark deleted position to nextPointedLedger:-1?
+                // Sample case: Opening an empty ledger with ledgers:(ledgerId:-1) will cause curPointedLedger==null,
+                // then recovery read will create a new ledger: (ledgerId+1:-1).
+                // If old markDeletePosition==(ledgerId:-1), we should move it to (ledgerId+1:-1).
                 log.warn("Cursor: {} does not exist in the managed-ledger.", cursor);
             }
 
@@ -2770,6 +2771,9 @@ public class ManagedLedgerImpl implements ManagedLedger, CreateCallback {
                         future.completeExceptionally(e);
                     }
                 }
+            } else if (lastAckedPosition.compareTo(markDeletedPosition) == 0) {
+                // normal case, don't need to update cursor position
+                future.complete(null);
             } else {
                 log.warn("Trying to update cursor to an already mark-deleted position. Current mark-delete:"
                         + " {} -- attempted position: {}", markDeletedPosition, lastAckedPosition);
