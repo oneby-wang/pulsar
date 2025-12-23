@@ -2711,28 +2711,33 @@ public class ManagedLedgerImpl implements ManagedLedger, CreateCallback {
 
     public void maybeUpdateCursorBeforeTrimmingConsumedLedger() {
         for (ManagedCursor cursor : cursors) {
+            // snapshot cursor.getMarkDeletedPosition() into a local variable to avoid race condition.
+            Position markDeletedPosition = PositionFactory.create(cursor.getMarkDeletedPosition());
             Position lastAckedPosition = cursor.getPersistentMarkDeletedPosition() != null
-                    ? cursor.getPersistentMarkDeletedPosition() : cursor.getMarkDeletedPosition();
-            LedgerInfo currPointedLedger = ledgers.get(lastAckedPosition.getLedgerId());
+                    ? cursor.getPersistentMarkDeletedPosition() : markDeletedPosition;
+            LedgerInfo curPointedLedger = ledgers.get(lastAckedPosition.getLedgerId());
             LedgerInfo nextPointedLedger = Optional.ofNullable(ledgers.higherEntry(lastAckedPosition.getLedgerId()))
                     .map(Map.Entry::getValue).orElse(null);
 
-            if (currPointedLedger != null) {
+            if (curPointedLedger != null) {
                 if (nextPointedLedger != null) {
                     if (lastAckedPosition.getEntryId() != -1
-                            && lastAckedPosition.getEntryId() + 1 >= currPointedLedger.getEntries()) {
+                            && lastAckedPosition.getEntryId() + 1 >= curPointedLedger.getEntries()) {
                         lastAckedPosition = PositionFactory.create(nextPointedLedger.getLedgerId(), -1);
                     }
                 } else {
                     log.debug("No need to reset cursor: {}, current ledger is the last ledger.", cursor);
                 }
             } else {
+                // TODO no ledger exists, should we move cursor mark deleted position to nextPointedLedger:-1 ?
                 log.warn("Cursor: {} does not exist in the managed-ledger.", cursor);
             }
 
-            if (!lastAckedPosition.equals(cursor.getMarkDeletedPosition())) {
+            if (lastAckedPosition.compareTo(markDeletedPosition) > 0) {
                 Position finalPosition = lastAckedPosition;
                 log.info("Reset cursor:{} to {} since ledger consumed completely", cursor, lastAckedPosition);
+                // TODO If PR https://github.com/apache/pulsar/pull/25087 is needed, maybe we should make
+                // maybeUpdateCursorBeforeTrimmingConsumedLedger a callback method too to avoid race condition.
                 cursor.asyncMarkDelete(lastAckedPosition, cursor.getProperties(),
                     new MarkDeleteCallback() {
                         @Override
@@ -2747,6 +2752,9 @@ public class ManagedLedgerImpl implements ManagedLedger, CreateCallback {
                                     cursor, cursor.getMarkDeletedPosition(), finalPosition, exception);
                         }
                     }, null);
+            } else {
+                log.warn("Trying to mark delete an already mark-deleted position. Current mark-delete: {} -- attempted"
+                        + " mark delete: {}", markDeletedPosition, lastAckedPosition);
             }
         }
     }
