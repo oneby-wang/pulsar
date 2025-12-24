@@ -1765,7 +1765,7 @@ public class ManagedLedgerImpl implements ManagedLedger, CreateCallback {
                     metadataMutex.unlock();
 
                     // May need to update the cursor position
-                    maybeUpdateCursorBeforeTrimmingConsumedLedger();
+                    maybeUpdateCursorBeforeTrimmingConsumedLedger(false);
                 }
 
                 @Override
@@ -2709,46 +2709,78 @@ public class ManagedLedgerImpl implements ManagedLedger, CreateCallback {
         this.waitingEntryCallBacks.add(cb);
     }
 
-    public void maybeUpdateCursorBeforeTrimmingConsumedLedger() {
+    public CompletableFuture<Void> maybeUpdateCursorBeforeTrimmingConsumedLedger(boolean updateMarkDeletedPosition) {
+        List<CompletableFuture<Void>> cursorMarkDeleteFutures = new ArrayList<>();
         for (ManagedCursor cursor : cursors) {
+            CompletableFuture<Void> future = new CompletableFuture<>();
+            cursorMarkDeleteFutures.add(future);
+
+            // Snapshot cursor.getMarkDeletedPosition() into a local variable to avoid race condition.
+            Position markDeletedPosition = PositionFactory.create(cursor.getMarkDeletedPosition());
             Position lastAckedPosition = cursor.getPersistentMarkDeletedPosition() != null
-                    ? cursor.getPersistentMarkDeletedPosition() : cursor.getMarkDeletedPosition();
-            LedgerInfo currPointedLedger = ledgers.get(lastAckedPosition.getLedgerId());
+                    ? cursor.getPersistentMarkDeletedPosition() : markDeletedPosition;
+            LedgerInfo curPointedLedger = ledgers.get(lastAckedPosition.getLedgerId());
             LedgerInfo nextPointedLedger = Optional.ofNullable(ledgers.higherEntry(lastAckedPosition.getLedgerId()))
                     .map(Map.Entry::getValue).orElse(null);
 
-            if (currPointedLedger != null) {
+            if (curPointedLedger != null) {
                 if (nextPointedLedger != null) {
                     if (lastAckedPosition.getEntryId() != -1
-                            && lastAckedPosition.getEntryId() + 1 >= currPointedLedger.getEntries()) {
+                            && lastAckedPosition.getEntryId() + 1 >= curPointedLedger.getEntries()) {
                         lastAckedPosition = PositionFactory.create(nextPointedLedger.getLedgerId(), -1);
                     }
                 } else {
                     log.debug("No need to reset cursor: {}, current ledger is the last ledger.", cursor);
                 }
             } else {
+                // TODO curPointedLedger==null, should we move cursor mark deleted position to nextPointedLedger:-1?
+                // Sample case: Opening an empty ledger with ledgers:(ledgerId:-1) will cause curPointedLedger==null,
+                // then recovery read will create a new ledger: (ledgerId+1:-1).
+                // If old markDeletePosition==(ledgerId:-1), we should move it to (ledgerId+1:-1).
                 log.warn("Cursor: {} does not exist in the managed-ledger.", cursor);
             }
 
-            if (!lastAckedPosition.equals(cursor.getMarkDeletedPosition())) {
-                Position finalPosition = lastAckedPosition;
-                log.info("Reset cursor:{} to {} since ledger consumed completely", cursor, lastAckedPosition);
-                cursor.asyncMarkDelete(lastAckedPosition, cursor.getProperties(),
-                    new MarkDeleteCallback() {
+            if (lastAckedPosition.compareTo(markDeletedPosition) > 0) {
+                if (updateMarkDeletedPosition) {
+                    Position finalPosition = lastAckedPosition;
+                    log.info("Mark delete cursor:{} to {} since ledger consumed completely", cursor, lastAckedPosition);
+                    cursor.asyncMarkDelete(lastAckedPosition, cursor.getProperties(), new MarkDeleteCallback() {
                         @Override
                         public void markDeleteComplete(Object ctx) {
-                            log.info("Successfully persisted cursor position for cursor:{} to {}",
-                                    cursor, finalPosition);
+                            log.info("Successfully persisted cursor position for cursor:{} to {}", cursor,
+                                    finalPosition);
+                            future.complete(null);
                         }
 
                         @Override
                         public void markDeleteFailed(ManagedLedgerException exception, Object ctx) {
-                            log.warn("Failed to reset cursor: {} from {} to {}. Trimming thread will retry next time.",
-                                    cursor, cursor.getMarkDeletedPosition(), finalPosition, exception);
+                            log.warn("Failed to mark delete cursor: {} from {} to {}.", cursor,
+                                    cursor.getMarkDeletedPosition(), finalPosition, exception);
+                            future.completeExceptionally(exception);
                         }
                     }, null);
+                } else {
+                    try {
+                        log.info("Reset cursor:{} to {} since ledger consumed completely", cursor, lastAckedPosition);
+                        onCursorMarkDeletePositionUpdated((ManagedCursorImpl) cursor, lastAckedPosition);
+                        future.complete(null);
+                    } catch (Exception e) {
+                        log.warn("Failed to reset cursor: {} from {} to {}. Trimming thread will retry next time.",
+                                cursor, cursor.getMarkDeletedPosition(), lastAckedPosition);
+                        log.warn("Caused by", e);
+                        future.completeExceptionally(e);
+                    }
+                }
+            } else if (lastAckedPosition.compareTo(markDeletedPosition) == 0) {
+                // normal case, don't need to update cursor position
+                future.complete(null);
+            } else {
+                log.warn("Trying to update cursor to an already mark-deleted position. Current mark-delete:"
+                        + " {} -- attempted position: {}", markDeletedPosition, lastAckedPosition);
+                future.complete(null);
             }
         }
+        return FutureUtil.waitForAll(cursorMarkDeleteFutures);
     }
 
     private void trimConsumedLedgersInBackground() {

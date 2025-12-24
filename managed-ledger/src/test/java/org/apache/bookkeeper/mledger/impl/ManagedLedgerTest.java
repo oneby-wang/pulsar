@@ -3774,7 +3774,7 @@ public class ManagedLedgerTest extends MockedBookKeeperTestCase {
         }
         entries.forEach(Entry::release);
         // Now we update the cursors that are still subscribing to ledgers that has been consumed completely
-        managedLedger.maybeUpdateCursorBeforeTrimmingConsumedLedger();
+        managedLedger.maybeUpdateCursorBeforeTrimmingConsumedLedger(false);
         managedLedger.internalTrimConsumedLedgers(Futures.NULL_PROMISE);
         ManagedLedgerImpl finalManagedLedger = managedLedger;
         Awaitility.await().untilAsserted(() -> {
@@ -4741,7 +4741,7 @@ public class ManagedLedgerTest extends MockedBookKeeperTestCase {
 
         // ===== PHASE 5: Update cursor before trimming (important synchronization point) =====
         log.info("=== PHASE 5: Calling maybeUpdateCursorBeforeTrimmingConsumedLedger ===");
-        ledger.maybeUpdateCursorBeforeTrimmingConsumedLedger();
+        ledger.maybeUpdateCursorBeforeTrimmingConsumedLedger(false);
 
         // ===== PHASE 6: Trigger ledger trimming =====
         log.info("=== PHASE 6: Triggering ledger trimming ===");
