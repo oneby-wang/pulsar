@@ -2182,7 +2182,8 @@ public class ManagedCursorImpl implements ManagedCursor {
         }
 
         Position newPosition = ackBatchPosition(position);
-        if (ledger.getLastConfirmedEntry().compareTo(newPosition) < 0) {
+        int lacCompareNewPositionRes = ledger.getLastConfirmedEntry().compareTo(newPosition);
+        if (lacCompareNewPositionRes <= 0) {
             boolean shouldCursorMoveForward = false;
             try {
                 long ledgerEntries = ledger.getLedgerInfo(markDeletePosition.getLedgerId()).get().getEntries();
@@ -2190,6 +2191,10 @@ public class ManagedCursorImpl implements ManagedCursor {
                 shouldCursorMoveForward = nextValidLedger != null
                         && (markDeletePosition.getEntryId() + 1 >= ledgerEntries)
                         && (newPosition.getLedgerId() == nextValidLedger);
+                // Move newPosition to nextValidLedger:-1 to avoid cursor position and ledger inconsistency.
+                if (shouldCursorMoveForward && lacCompareNewPositionRes == 0) {
+                    newPosition = PositionFactory.create(nextValidLedger, -1);
+                }
             } catch (Exception e) {
                 log.warn("Failed to get ledger entries while setting mark-delete-position", e);
             }
