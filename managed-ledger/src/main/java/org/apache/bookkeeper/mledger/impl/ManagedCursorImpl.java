@@ -2275,7 +2275,7 @@ public class ManagedCursorImpl implements ManagedCursor {
             if (shouldCursorMoveForward) {
                 log.info("[{}] move mark-delete-position from {} to {} since all the entries have been consumed",
                         ledger.getName(), markDeletePosition, newPosition);
-            } else {
+            } else if (lacCompareNewPositionRes < 0) {
                 if (log.isDebugEnabled()) {
                     log.debug("[{}] Failed mark delete due to invalid markDelete {} is ahead of last-confirmed-entry {}"
                              + " for cursor [{}]", ledger.getName(), position, ledger.getLastConfirmedEntry(), name);
