@@ -2254,17 +2254,21 @@ public class ManagedCursorImpl implements ManagedCursor {
             log.debug("[{}] Mark delete cursor {} up to position: {}", ledger.getName(), name, position);
         }
 
+        // Snapshot all positions into local variables to avoid race condition.
         Position newPosition = ackBatchPosition(position);
-        int lacCompareNewPositionRes = ledger.getLastConfirmedEntry().compareTo(newPosition);
+        Position lastConfirmedEntry = ledger.getLastConfirmedEntry();
+        Position markDeletePos = markDeletePosition;
+        int lacCompareNewPositionRes = lastConfirmedEntry.compareTo(newPosition);
         if (lacCompareNewPositionRes <= 0) {
             boolean shouldCursorMoveForward = false;
             try {
-                long ledgerEntries = ledger.getLedgerInfo(markDeletePosition.getLedgerId()).get().getEntries();
-                Long nextValidLedger = ledger.getNextValidLedger(ledger.getLastConfirmedEntry().getLedgerId());
+                long ledgerEntries = ledger.getLedgerInfo(markDeletePos.getLedgerId()).get().getEntries();
+                Long nextValidLedger = ledger.getNextValidLedger(lastConfirmedEntry.getLedgerId());
                 shouldCursorMoveForward = nextValidLedger != null
-                        && (markDeletePosition.getEntryId() + 1 >= ledgerEntries)
+                        && (markDeletePos.getEntryId() + 1 >= ledgerEntries)
                         && (newPosition.getLedgerId() == nextValidLedger);
-                // Move newPosition to nextValidLedger:-1 to avoid cursor position and ledger inconsistency.
+                // Move newPosition to nextValidLedger:-1 if we consumed all entries in current ledger
+                // to avoid cursor position and ledger inconsistency.
                 if (shouldCursorMoveForward && lacCompareNewPositionRes == 0) {
                     newPosition = PositionFactory.create(nextValidLedger, -1);
                 }
@@ -2274,15 +2278,20 @@ public class ManagedCursorImpl implements ManagedCursor {
 
             if (shouldCursorMoveForward) {
                 log.info("[{}] move mark-delete-position from {} to {} since all the entries have been consumed",
-                        ledger.getName(), markDeletePosition, newPosition);
+                        ledger.getName(), markDeletePos, newPosition);
             } else if (lacCompareNewPositionRes < 0) {
+                // If newPosition>lastConfirmedEntry and current ledger entries are not fully consumed,
+                // in which case the newPosition is an invalid mark delete position.
                 if (log.isDebugEnabled()) {
                     log.debug("[{}] Failed mark delete due to invalid markDelete {} is ahead of last-confirmed-entry {}"
-                             + " for cursor [{}]", ledger.getName(), position, ledger.getLastConfirmedEntry(), name);
+                             + " for cursor [{}]", ledger.getName(), position, lastConfirmedEntry, name);
                 }
                 callback.markDeleteFailed(new ManagedLedgerException("Invalid mark deleted position"), ctx);
                 return;
             }
+            // The else condition is (shouldCursorMoveForward==false && lacCompareNewPositionRes==0),
+            // we just do normal mark delete operation, in which case we can consume and ack messages
+            // across multi ledgers.
         }
 
         lock.writeLock().lock();
