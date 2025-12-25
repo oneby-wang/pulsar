@@ -5919,6 +5919,87 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
         assertEquals(future1.get(2, TimeUnit.SECONDS).get(0).getData(), "msg".getBytes());
     }
 
+    @Test(timeOut = 20000)
+    public void testAsyncMarkDeleteToNextLedgerInNoRolloverScenario() throws Exception {
+        ManagedLedgerConfig config = new ManagedLedgerConfig();
+        int maxEntriesPerLedger = 10;
+        config.setMaxEntriesPerLedger(maxEntriesPerLedger);
+        ManagedLedger ledger = factory.open("async_mark_delete_to_next_ledger_test", config);
+        final ManagedCursor c1 = ledger.openCursor("c1");
+
+        final int addEntryNum = 101;
+        final CountDownLatch addEntryLatch = new CountDownLatch(addEntryNum);
+        AtomicReference<Position> secondLastPosition = new AtomicReference<>();
+        AtomicReference<Position> lastPosition = new AtomicReference<>();
+        for (int i = 0; i < addEntryNum; i++) {
+            String entryStr = "entry-" + i;
+            int index = i;
+            ledger.asyncAddEntry(entryStr.getBytes(Encoding), new AddEntryCallback() {
+                @Override
+                public void addFailed(ManagedLedgerException exception, Object ctx) {
+                }
+
+                @Override
+                public void addComplete(Position position, ByteBuf entryData, Object ctx) {
+                    if (index == addEntryNum - 2) {
+                        secondLastPosition.set(position);
+                    }
+                    lastPosition.set(position);
+                    addEntryLatch.countDown();
+                }
+            }, null);
+        }
+        addEntryLatch.await();
+
+        assertEquals(ledger.getNumberOfEntries(), addEntryNum);
+        assertEquals(secondLastPosition.get().getEntryId(), maxEntriesPerLedger - 1);
+        assertEquals(lastPosition.get().getEntryId(), addEntryNum % maxEntriesPerLedger - 1);
+
+        final CountDownLatch c1MarkDeleteLatch = new CountDownLatch(1);
+        c1.asyncMarkDelete(secondLastPosition.get(), new MarkDeleteCallback() {
+            @Override
+            public void markDeleteFailed(ManagedLedgerException exception, Object ctx) {
+            }
+
+            @Override
+            public void markDeleteComplete(Object ctx) {
+                c1MarkDeleteLatch.countDown();
+            }
+        }, null);
+        c1MarkDeleteLatch.await();
+
+        assertEquals(c1.getNumberOfEntries(), 1);
+        // Should move to lastPositionLedgerId:-1 since entries in secondLastPositionLedger are all consumed.
+        assertEquals(c1.getMarkDeletedPosition(),
+                PositionFactory.create(lastPosition.get().getLedgerId(), -1));
+
+        // Reopen
+        @Cleanup("shutdown") ManagedLedgerFactory factory2 = new ManagedLedgerFactoryImpl(metadataStore, bkc);
+        ledger = factory2.open("async_mark_delete_to_next_ledger_test");
+        ManagedCursor c2 = ledger.openCursor("c1");
+        assertEquals(c2.getNumberOfEntries(), 1);
+        assertEquals(c2.getMarkDeletedPosition(),
+                PositionFactory.create(lastPosition.get().getLedgerId(), -1));
+
+        final CountDownLatch c2MarkDeleteLatch = new CountDownLatch(1);
+        c2.asyncMarkDelete(lastPosition.get(), new MarkDeleteCallback() {
+            @Override
+            public void markDeleteFailed(ManagedLedgerException exception, Object ctx) {
+            }
+
+            @Override
+            public void markDeleteComplete(Object ctx) {
+                c2MarkDeleteLatch.countDown();
+            }
+        }, null);
+        c2MarkDeleteLatch.await();
+
+        assertEquals(c2.getNumberOfEntries(), 0);
+        // Should move to nextLedgerId:-1 since entries in lastPositionLedger are all consumed.
+        // Here we can guarantee next ledger is created since the asyncOpenLedger guarantees this order.
+        assertThat(c2.getMarkDeletedPosition()).isGreaterThan(lastPosition.get());
+    }
+
     class TestPulsarMockBookKeeper extends PulsarMockBookKeeper {
         Map<Long, Integer> ledgerErrors = new HashMap<>();
 
