@@ -2262,15 +2262,27 @@ public class ManagedCursorImpl implements ManagedCursor {
         if (lacCompareNewPositionRes <= 0) {
             boolean shouldCursorMoveForward = false;
             try {
-                long ledgerEntries = ledger.getLedgerInfo(markDeletePos.getLedgerId()).get().getEntries();
-                Long nextValidLedger = ledger.getNextValidLedger(lastConfirmedEntry.getLedgerId());
-                shouldCursorMoveForward = nextValidLedger != null
-                        && (markDeletePos.getEntryId() + 1 >= ledgerEntries)
-                        && (newPosition.getLedgerId() == nextValidLedger);
-                // Move newPosition to nextValidLedger:-1 if we consumed all entries in current ledger
-                // to avoid cursor position and ledger inconsistency.
-                if (shouldCursorMoveForward && lacCompareNewPositionRes == 0) {
-                    newPosition = PositionFactory.create(nextValidLedger, -1);
+                // The markDeletePosLedger may not exist due to ledger trim operation.
+                LedgerInfo markDeletePosLedgerInfo = ledger.getLedgerInfo(markDeletePos.getLedgerId()).get();
+                // Bypass when markDeletePosLedgerInfo==null, leave shouldCursorMoveForward as false.
+                if (markDeletePosLedgerInfo == null) {
+                    log.info("[{}] can't get ledger info at mark-delete-position {}.", ledger.getName(), markDeletePos);
+                } else {
+                    long ledgerEntries = markDeletePosLedgerInfo.getEntries();
+                    // Next ledger may not exist due to async ledger rollover.
+                    Long nextValidLedger = ledger.getNextValidLedger(lastConfirmedEntry.getLedgerId());
+                    shouldCursorMoveForward = nextValidLedger != null
+                            && (markDeletePos.getEntryId() + 1 >= ledgerEntries)
+                            && (newPosition.getLedgerId() == nextValidLedger);
+                    // Move newPosition to nextValidLedger:-1 if we consumed all entries in current ledger
+                    // to avoid cursor position and ledger inconsistency.
+                    // If next ledger creation doesn't complete, shouldCursorMoveForward==false, in which case we can't
+                    // guarantee the consistency, since the newPosition is (lastConfirmedLedger:lastConfirmedEntry-1).
+                    // The root cause is ledger rollover and asyncAddEntry.addComplete run concurrently. I think this is
+                    // for publish latency performance consideration, but it brings us some uncertainty.
+                    if (shouldCursorMoveForward && lacCompareNewPositionRes == 0) {
+                        newPosition = PositionFactory.create(nextValidLedger, -1);
+                    }
                 }
             } catch (Exception e) {
                 log.warn("Failed to get ledger entries while setting mark-delete-position", e);
