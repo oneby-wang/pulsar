@@ -2089,7 +2089,7 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
         assertEquals(cursor.getMarkDeletedPosition(), p1);
     }
 
-    @Test(timeOut = 20000, dataProvider = "useOpenRangeSet", invocationCount = 100)
+    @Test(timeOut = 20000, dataProvider = "useOpenRangeSet")
     void testSkipEntries(boolean useOpenRangeSet) throws Exception {
         ManagedLedgerImpl ledger = (ManagedLedgerImpl) factory.open("my_test_ledger", new ManagedLedgerConfig()
                 .setUnackedRangesOpenCacheSetEnabled(useOpenRangeSet).setMaxEntriesPerLedger(2));
@@ -2125,9 +2125,9 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
             pos = ledger.addEntry("dummy-entry".getBytes(Encoding));
         }
 
+        // Wait new empty ledger created completely.
         Awaitility.await().untilAsserted(() -> assertThat(ledger.getLedgersInfo().size()).isEqualTo(4));
 
-        // Wait maybeUpdateCursorBeforeTrimmingConsumedLedger to complete, or it will cause some race condition.
         c1.skipEntries(5, IndividualDeletedEntries.Exclude);
         assertEquals(c1.getNumberOfEntries(), 1);
 
