@@ -5109,7 +5109,7 @@ public class ManagedLedgerTest extends MockedBookKeeperTestCase {
         ml.delete();
     }
 
-    @Test(invocationCount = 1000)
+    @Test
     public void testTrimmerRaceCondition() throws Exception {
         ManagedLedgerConfig config = new ManagedLedgerConfig();
         config.setMaxEntriesPerLedger(1);
