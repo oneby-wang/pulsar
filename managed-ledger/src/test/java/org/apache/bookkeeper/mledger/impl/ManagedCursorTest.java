@@ -2167,7 +2167,7 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
         c1.skipEntries(3, IndividualDeletedEntries.Exclude);
         assertEquals(c1.getNumberOfEntries(), 0);
         assertEquals(c1.getReadPosition(), PositionFactory.create(pos5.getLedgerId() + 1, 0));
-        assertEquals(c1.getMarkDeletedPosition(), pos5);
+        assertEquals(c1.getMarkDeletedPosition(), PositionFactory.create(pos5.getLedgerId() + 1, -1));
 
         Position pos6 = ledger.addEntry("dummy-entry-1".getBytes(Encoding));
         Position pos7 = ledger.addEntry("dummy-entry-2".getBytes(Encoding));
@@ -6054,7 +6054,7 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
         assertThat(c1.getMarkDeletedPosition()).isGreaterThan(lastPosition.get());
 
         CountDownLatch asyncMarkDeleteLatch = new CountDownLatch(1);
-        // May fail or success, because markDeletePosition may be moved to nextLedgerId:-1 or stay in lastLedgerId:9
+        // Must fail, because markDeletePosition is moved to nextLedgerId:-1.
         c1.asyncMarkDelete(lastPosition.get(), new MarkDeleteCallback() {
             @Override
             public void markDeleteFailed(ManagedLedgerException exception, Object ctx) {
