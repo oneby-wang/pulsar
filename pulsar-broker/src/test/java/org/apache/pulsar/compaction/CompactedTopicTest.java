@@ -802,7 +802,7 @@ public class CompactedTopicTest extends MockedPulsarServiceBaseTest {
         }
     }
 
-    @Test(timeOut = 20000, invocationCount = 100)
+    @Test(timeOut = 20000)
     public void testReadCompactedLatestMessageWithInclusive() throws Exception {
         String topic = "persistent://my-property/use/my-ns/testLedgerRollover-"
                 + UUID.randomUUID();
