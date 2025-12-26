@@ -6043,22 +6043,22 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
         assertEquals(c1.getNumberOfEntries(), 0);
         assertThat(c1.getMarkDeletedPosition()).isGreaterThanOrEqualTo(lastPosition.get());
         Awaitility.await().untilAsserted(() -> assertThat(ledger.getLedgersInfo().size()).isEqualTo(1));
+        assertThat(c1.getMarkDeletedPosition()).isGreaterThan(lastPosition.get());
 
         CountDownLatch asyncMarkDeleteLatch = new CountDownLatch(1);
+        // May fail or success, because markDeletePosition may be moved to nextLedgerId:-1 or stay in lastLedgerId:9
         c1.asyncMarkDelete(lastPosition.get(), new MarkDeleteCallback() {
             @Override
             public void markDeleteFailed(ManagedLedgerException exception, Object ctx) {
+                asyncMarkDeleteLatch.countDown();
             }
 
             @Override
             public void markDeleteComplete(Object ctx) {
-                asyncMarkDeleteLatch.countDown();
+                fail("Mark deleting an already mark-delete position should fail");
             }
         }, null);
         asyncMarkDeleteLatch.await();
-
-        assertEquals(c1.getNumberOfEntries(), 0);
-        assertThat(c1.getMarkDeletedPosition()).isGreaterThan(lastPosition.get());
 
         // Reopen
         @Cleanup("shutdown") ManagedLedgerFactory factory2 = new ManagedLedgerFactoryImpl(metadataStore, bkc);
@@ -6067,7 +6067,7 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
         ManagedCursor c2 = newLedger.openCursor("c1");
 
         assertEquals(c2.getNumberOfEntries(), 0);
-        assertThat(c2.getMarkDeletedPosition()).isGreaterThan(lastPosition.get());
+        assertThat(c2.getMarkDeletedPosition()).isGreaterThan(c1.getMarkDeletedPosition());
     }
 
     @Test(timeOut = 20000)

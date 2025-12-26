@@ -2261,36 +2261,26 @@ public class ManagedCursorImpl implements ManagedCursor {
         Position markDeletePos = markDeletePosition;
         boolean shouldCursorMoveForward = false;
         try {
+            // Keep all comparison cases here for future modification.
             if (lastConfirmedEntry.getLedgerId() > newPosition.getLedgerId()) {
-                // The newPosition is 5:1, the lastConfirmedEntry is 6:0, next ledger may not exist
-                // in non-durable cursor, must exist in durable cursor.
                 LedgerInfo curMarkDeleteledgerInfo = ledger.getLedgerInfo(newPosition.getLedgerId()).get();
-                shouldCursorMoveForward = newPosition.getEntryId() + 1 >= curMarkDeleteledgerInfo.getEntries();
                 Long nextValidLedger = ledger.getNextValidLedger(newPosition.getLedgerId());
+                shouldCursorMoveForward = (nextValidLedger != null)
+                        && (curMarkDeleteledgerInfo != null
+                        && newPosition.getEntryId() + 1 >= curMarkDeleteledgerInfo.getEntries());
                 if (shouldCursorMoveForward) {
                     moveForwardPosition = PositionFactory.create(nextValidLedger, -1);
                 }
             } else if (lastConfirmedEntry.getLedgerId() == newPosition.getLedgerId()) {
-                // The newPosition is 6:0,  the lastConfirmedEntry is 6:0, next ledger not exists.
-                // The newPosition is 6:0,  the lastConfirmedEntry is 6:1, next ledger not exists.
-                // The newPosition is 6:1,  the lastConfirmedEntry is 6:1, next ledger exists, current ledger exists.
-                // The newPosition is 6:1,  the lastConfirmedEntry is 6:1, next ledger exists, current ledger not
-                // exists.
-                // The newPosition is 6:-1, the lastConfirmedEntry is 6:0, next ledger not exists.
-                // The newPosition is 6:-1, the lastConfirmedEntry is 6:1, next ledger exists, current ledger must
-                // exist.
                 LedgerInfo curMarkDeleteledgerInfo = ledger.getLedgerInfo(newPosition.getLedgerId()).get();
                 Long nextValidLedger = ledger.getNextValidLedger(lastConfirmedEntry.getLedgerId());
                 shouldCursorMoveForward = (nextValidLedger != null)
-                        && (curMarkDeleteledgerInfo == null
-                        || newPosition.getEntryId() + 1 >= curMarkDeleteledgerInfo.getEntries());
+                        && (curMarkDeleteledgerInfo != null
+                        && newPosition.getEntryId() + 1 >= curMarkDeleteledgerInfo.getEntries());
                 if (shouldCursorMoveForward) {
                     moveForwardPosition = PositionFactory.create(nextValidLedger, -1);
                 }
             } else {
-                // The newPosition is 7:-1, the lastConfirmedEntry is 6:x, next ledger not exists.
-                // The newPosition is 7:-1, the lastConfirmedEntry is 6:x, next ledger exists.
-                // The newPosition is 7:0,  the lastConfirmedEntry is 6:x, should not happen.
                 Long nextValidLedger = ledger.getNextValidLedger(lastConfirmedEntry.getLedgerId());
                 shouldCursorMoveForward = (nextValidLedger != null)
                         && (newPosition.getLedgerId() == nextValidLedger)
