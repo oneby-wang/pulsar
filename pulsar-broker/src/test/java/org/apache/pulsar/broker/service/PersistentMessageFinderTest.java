@@ -496,7 +496,7 @@ public class PersistentMessageFinderTest extends MockedBookKeeperTestCase {
             Position markDeletePosition = c1.getMarkDeletedPosition();
             // The markDeletePosition points to the last entry of the previous ledger in lastLedgerInfo.
             assertEquals(markDeletePosition.getLedgerId(), lastLedgerInfo.getLedgerId());
-            assertEquals(markDeletePosition.getEntryId(), - 1);
+            assertEquals(markDeletePosition.getEntryId(), -1);
         });
 
         c1.close();
