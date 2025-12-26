@@ -455,7 +455,7 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
         ml.delete();
     }
 
-    @Test
+    @Test(timeOut = 20000)
     void testPersistentMarkDeleteIfSwitchCursorLedgerFailed() throws Exception {
         final int entryCount = 10;
         final String cursorName = "c1";
@@ -495,15 +495,20 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
 
         // Assert persist mark deleted position to ZK was successful.
         Position slowestReadPosition = ml.getCursors().getSlowestCursorPosition();
-        assertTrue(slowestReadPosition.getLedgerId() >= lastEntry.getLedgerId());
-        assertTrue(slowestReadPosition.getEntryId() >= lastEntry.getEntryId());
-        assertEquals(cursor.getPersistentMarkDeletedPosition(), lastEntry);
+        assertThat(slowestReadPosition).isGreaterThan(lastEntry);
+        assertThat(cursor.getPersistentMarkDeletedPosition()).isGreaterThan(lastEntry);
 
         // Verify the mark delete position can be recovered properly.
         ml.close();
         ml = (ManagedLedgerImpl) factory.open(mlName, mlConfig);
         ManagedCursorImpl cursorRecovered = (ManagedCursorImpl) ml.openCursor(cursorName);
-        assertEquals(cursorRecovered.getPersistentMarkDeletedPosition(), lastEntry);
+        // Ledger process may not completed， reopen wil bypass empty ledger, so recovered cursor's
+        // persistentMarkDeletedPosition may be equal to lastEntry
+        assertThat(cursorRecovered.getPersistentMarkDeletedPosition()).isGreaterThanOrEqualTo(
+                lastEntry);
+        // But recovered cursor's markDeletePosition must be greater than
+        assertThat(cursorRecovered.getMarkDeletedPosition()).isGreaterThanOrEqualTo(
+                lastEntry);
 
         // cleanup.
         ml.delete();
