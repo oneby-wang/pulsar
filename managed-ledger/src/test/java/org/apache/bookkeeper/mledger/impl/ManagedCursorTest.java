@@ -5924,7 +5924,7 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
         ManagedLedgerConfig config = new ManagedLedgerConfig();
         int maxEntriesPerLedger = 10;
         config.setMaxEntriesPerLedger(maxEntriesPerLedger);
-        ManagedLedger ledger = factory.open("async_mark_delete_move_to_next_ledger_in_rollover_test", config);
+        ManagedLedger ledger = factory.open("async_mark_delete_move_to_next_ledger_in_non_rollover_test", config);
         final ManagedCursor c1 = ledger.openCursor("c1");
 
         final int addEntryNum = 101;
@@ -5977,6 +5977,7 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
         @Cleanup("shutdown") ManagedLedgerFactory factory2 = new ManagedLedgerFactoryImpl(metadataStore, bkc);
         ledger = factory2.open("async_mark_delete_move_to_next_ledger_in_non_rollover_test");
         ManagedCursor c2 = ledger.openCursor("c1");
+
         assertEquals(c2.getNumberOfEntries(), 1);
         assertEquals(c2.getMarkDeletedPosition(),
                 PositionFactory.create(lastPosition.get().getLedgerId(), -1));
@@ -6000,7 +6001,7 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
         assertThat(c2.getMarkDeletedPosition()).isGreaterThan(lastPosition.get());
     }
 
-    @Test(timeOut = 20000, invocationCount = 100)
+    @Test(timeOut = 20000)
     public void testAsyncMarkDeleteMayMoveToNextLedgerInRolloverScenario() throws Exception {
         ManagedLedgerConfig config = new ManagedLedgerConfig();
         config.setMaxEntriesPerLedger(10);
@@ -6049,6 +6050,8 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
                 asyncMarkDeleteLatch.countDown();
             }
         }, null);
+        asyncMarkDeleteLatch.await();
+
         assertEquals(c1.getNumberOfEntries(), 0);
         assertThat(c1.getMarkDeletedPosition()).isGreaterThan(lastPosition.get());
 
@@ -6058,8 +6061,115 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
         ManagedLedger newLedger = ManagedLedgerTestUtil.retry(
                 () -> factory2.open("async_mark_delete_may_move_to_next_ledger_in_non_rollover_test"));
         ManagedCursor c2 = newLedger.openCursor("c1");
+
         assertEquals(c2.getNumberOfEntries(), 0);
         assertThat(c2.getMarkDeletedPosition()).isGreaterThan(lastPosition.get());
+    }
+
+    @Test(timeOut = 20000)
+    public void testAsyncMarkDeleteMoveToNextLedgerOneByOne() throws Exception {
+        ManagedLedgerConfig config = new ManagedLedgerConfig();
+        int maxEntriesPerLedger = 10;
+        config.setMaxEntriesPerLedger(maxEntriesPerLedger);
+        ManagedLedger ledger = factory.open("async_mark_delete_move_to_next_ledger_one_by_one_test", config);
+        final ManagedCursor c1 = ledger.openCursor("c1");
+        final AtomicReference<Position> lastPosition = new AtomicReference<>();
+
+        final int entryNum = 101;
+        final CountDownLatch addEntryLatch = new CountDownLatch(entryNum);
+        Deque<Position> positions = new ConcurrentLinkedDeque<>();
+        for (int i = 0; i < entryNum; i++) {
+            ledger.asyncAddEntry("entry".getBytes(Encoding), new AddEntryCallback() {
+                @Override
+                public void addFailed(ManagedLedgerException exception, Object ctx) {
+                }
+
+                @Override
+                public void addComplete(Position position, ByteBuf entryData, Object ctx) {
+                    lastPosition.set(position);
+                    positions.offer(position);
+                    addEntryLatch.countDown();
+                }
+            }, null);
+        }
+        addEntryLatch.await();
+
+        for (int i = 0; i < entryNum; i++) {
+            CountDownLatch markDeleteLatch = new CountDownLatch(1);
+            Position position = positions.poll();
+            c1.asyncMarkDelete(position, new MarkDeleteCallback() {
+                @Override
+                public void markDeleteFailed(ManagedLedgerException exception, Object ctx) {
+                }
+
+                @Override
+                public void markDeleteComplete(Object ctx) {
+                    markDeleteLatch.countDown();
+                }
+            }, null);
+            markDeleteLatch.await();
+            assertEquals(c1.getNumberOfEntries(), entryNum - i - 1);
+            if ((i + 1) % maxEntriesPerLedger == 0) {
+                assertThat(c1.getMarkDeletedPosition()).isGreaterThan(position);
+            } else {
+                assertThat(c1.getMarkDeletedPosition()).isEqualByComparingTo(position);
+            }
+        }
+
+        // Reopen
+        @Cleanup("shutdown") ManagedLedgerFactory factory2 = new ManagedLedgerFactoryImpl(metadataStore, bkc);
+        ManagedLedger newLedger = ManagedLedgerTestUtil.retry(
+                () -> factory2.open("async_mark_delete_move_to_next_ledger_one_by_one_test"));
+        ManagedCursor c2 = newLedger.openCursor("c1");
+        assertEquals(c2.getNumberOfEntries(), 0);
+        Awaitility.await()
+                .untilAsserted(() -> assertThat(c2.getMarkDeletedPosition()).isGreaterThan(lastPosition.get()));
+    }
+
+    @Test(timeOut = 20000)
+    public void testAsyncMarkDeleteNextLedgerPosition() throws Exception {
+        ManagedLedgerConfig config = new ManagedLedgerConfig();
+        int maxEntriesPerLedger = 10;
+        config.setMaxEntriesPerLedger(maxEntriesPerLedger);
+        ManagedLedger ledger = factory.open("async_mark_delete_move_to_next_ledger_one_by_one_test", config);
+        final ManagedCursor c1 = ledger.openCursor("c1");
+
+        final int entryNum = 100;
+        for (int i = 0; i < entryNum / maxEntriesPerLedger; i++) {
+            final CountDownLatch addEntryLatch = new CountDownLatch(maxEntriesPerLedger);
+            for (int j = 0; j < maxEntriesPerLedger; j++) {
+                ledger.asyncAddEntry("entry".getBytes(Encoding), new AddEntryCallback() {
+                    @Override
+                    public void addFailed(ManagedLedgerException exception, Object ctx) {
+                    }
+
+                    @Override
+                    public void addComplete(Position position, ByteBuf entryData, Object ctx) {
+                        addEntryLatch.countDown();
+                    }
+                }, null);
+            }
+            addEntryLatch.await();
+
+            Awaitility.await().untilAsserted(() -> assertThat(ledger.getLedgersInfo().size()).isEqualTo(2));
+
+            Long nextLedgerId = ledger.getLedgersInfo().lastEntry().getKey();
+            Position markDeletePosition = PositionFactory.create(nextLedgerId, -1);
+            CountDownLatch markDeleteLatch = new CountDownLatch(1);
+            c1.asyncMarkDelete(markDeletePosition, new MarkDeleteCallback() {
+                @Override
+                public void markDeleteFailed(ManagedLedgerException exception, Object ctx) {
+                }
+
+                @Override
+                public void markDeleteComplete(Object ctx) {
+                    markDeleteLatch.countDown();
+                }
+            }, null);
+            markDeleteLatch.await();
+            assertEquals(c1.getNumberOfEntries(), 0);
+            assertThat(c1.getMarkDeletedPosition()).isEqualByComparingTo(markDeletePosition);
+        }
     }
 
     class TestPulsarMockBookKeeper extends PulsarMockBookKeeper {

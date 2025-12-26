@@ -2261,14 +2261,20 @@ public class ManagedCursorImpl implements ManagedCursor {
         int lacCompareNewPositionRes = lastConfirmedEntry.compareTo(newPosition);
         boolean shouldCursorMoveForward = false;
         try {
-            if (lacCompareNewPositionRes > 0) {
+            if (lastConfirmedEntry.getLedgerId() > newPosition.getLedgerId()) {
+                // The newPosition is 5:1, the lastConfirmedEntry is 6:0, next ledger must exist.
                 LedgerInfo curMarkDeleteledgerInfo = ledger.getLedgerInfo(newPosition.getLedgerId()).get();
                 shouldCursorMoveForward = newPosition.getEntryId() + 1 >= curMarkDeleteledgerInfo.getEntries();
                 Long nextValidLedger = ledger.getNextValidLedger(newPosition.getLedgerId());
                 if (shouldCursorMoveForward) {
                     newPosition = PositionFactory.create(nextValidLedger, -1);
                 }
-            } else if (lacCompareNewPositionRes == 0) {
+            } else if (lastConfirmedEntry.getLedgerId() == newPosition.getLedgerId()) {
+                // The newPosition is 6:0,  the lastConfirmedEntry is 6:0, next ledger not exists.
+                // The newPosition is 6:0,  the lastConfirmedEntry is 6:1, next ledger not exists.
+                // The newPosition is 6:1,  the lastConfirmedEntry is 6:1, next ledger exists.
+                // The newPosition is 6:-1, the lastConfirmedEntry is 6:0, next ledger not exists.
+                // The newPosition is 6:-1, the lastConfirmedEntry is 6:1, next ledger exists.
                 LedgerInfo curMarkDeleteledgerInfo = ledger.getLedgerInfo(newPosition.getLedgerId()).get();
                 Long nextValidLedger = ledger.getNextValidLedger(lastConfirmedEntry.getLedgerId());
                 shouldCursorMoveForward = (nextValidLedger != null)
@@ -2277,6 +2283,9 @@ public class ManagedCursorImpl implements ManagedCursor {
                     newPosition = PositionFactory.create(nextValidLedger, -1);
                 }
             } else {
+                // The newPosition is 7:-1, the lastConfirmedEntry is 6:x, next ledger not exists.
+                // The newPosition is 7:-1, the lastConfirmedEntry is 6:x, next ledger exists.
+                // The newPosition is 7:0,  the lastConfirmedEntry is 6:x, should not happen.
                 Long nextValidLedger = ledger.getNextValidLedger(lastConfirmedEntry.getLedgerId());
                 shouldCursorMoveForward = (nextValidLedger != null)
                         && (newPosition.getLedgerId() == nextValidLedger)
