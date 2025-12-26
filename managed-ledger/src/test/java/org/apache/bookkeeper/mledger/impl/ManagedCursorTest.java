@@ -1830,7 +1830,7 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
         }
     }
 
-    @Test
+    @Test(timeOut = 20000)
     void failDuringRecoveryWithEmptyLedger() throws Exception {
         ManagedLedger ledger = factory.open("my_test_ledger");
         ManagedCursor cursor = ledger.openCursor("cursor");
@@ -1846,6 +1846,7 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
         // Re-open
         ledger = factory.open("my_test_ledger");
         cursor = ledger.openCursor("cursor");
+        // Move markDeletePosition to nextLedger:-1 since current ledger entries are consumed.
         cursor.markDelete(p3);
 
         // Force-reopen so the recovery will be forced to read from ledger
@@ -1854,11 +1855,15 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
 
         @Cleanup("shutdown")
         ManagedLedgerFactory factory2 = new ManagedLedgerFactoryImpl(metadataStore, bkc, conf);
-        ledger = factory2.open("my_test_ledger");
-        cursor = ledger.openCursor("cursor");
+        ManagedLedger newLedger = factory2.open("my_test_ledger");
+        cursor = newLedger.openCursor("cursor");
 
-        // Cursor was rolled back to p2 because of the ledger recovery failure
-        assertEquals(cursor.getMarkDeletedPosition(), p2);
+        // Previous empty ledger would be deleted, and create a new ledger.
+        assertThat(newLedger.getLedgersInfo().size()).isEqualTo(1);
+
+        // Cursor move to newestEmptyLedgerId:-1 since all entries are consumed.
+        assertThat(cursor.getMarkDeletedPosition()).isEqualByComparingTo(
+                PositionFactory.create(newLedger.getLedgersInfo().lastKey(), -1));
     }
 
     @Test(timeOut = 20000)
