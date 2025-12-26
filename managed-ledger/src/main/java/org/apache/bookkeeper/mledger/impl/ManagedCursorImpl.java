@@ -2272,13 +2272,17 @@ public class ManagedCursorImpl implements ManagedCursor {
             } else if (lastConfirmedEntry.getLedgerId() == newPosition.getLedgerId()) {
                 // The newPosition is 6:0,  the lastConfirmedEntry is 6:0, next ledger not exists.
                 // The newPosition is 6:0,  the lastConfirmedEntry is 6:1, next ledger not exists.
-                // The newPosition is 6:1,  the lastConfirmedEntry is 6:1, next ledger exists.
+                // The newPosition is 6:1,  the lastConfirmedEntry is 6:1, next ledger exists, current ledger exists.
+                // The newPosition is 6:1,  the lastConfirmedEntry is 6:1, next ledger exists, current ledger not
+                // exists.
                 // The newPosition is 6:-1, the lastConfirmedEntry is 6:0, next ledger not exists.
-                // The newPosition is 6:-1, the lastConfirmedEntry is 6:1, next ledger exists.
+                // The newPosition is 6:-1, the lastConfirmedEntry is 6:1, next ledger exists, current ledger must
+                // exist.
                 LedgerInfo curMarkDeleteledgerInfo = ledger.getLedgerInfo(newPosition.getLedgerId()).get();
                 Long nextValidLedger = ledger.getNextValidLedger(lastConfirmedEntry.getLedgerId());
                 shouldCursorMoveForward = (nextValidLedger != null)
-                        && (newPosition.getEntryId() + 1 >= curMarkDeleteledgerInfo.getEntries());
+                        && (curMarkDeleteledgerInfo == null
+                        || newPosition.getEntryId() + 1 >= curMarkDeleteledgerInfo.getEntries());
                 if (shouldCursorMoveForward) {
                     newPosition = PositionFactory.create(nextValidLedger, -1);
                 }

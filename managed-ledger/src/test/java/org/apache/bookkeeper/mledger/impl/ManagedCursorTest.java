@@ -6060,7 +6060,6 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
         assertEquals(c1.getNumberOfEntries(), 0);
         assertThat(c1.getMarkDeletedPosition()).isGreaterThan(lastPosition.get());
 
-
         // Reopen
         @Cleanup("shutdown") ManagedLedgerFactory factory2 = new ManagedLedgerFactoryImpl(metadataStore, bkc);
         ManagedLedger newLedger = ManagedLedgerTestUtil.retry(
@@ -6132,7 +6131,7 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
     }
 
     @Test(timeOut = 20000)
-    public void testAsyncMarkDeleteNextLedgerPosition() throws Exception {
+    public void testAsyncMarkDeleteNextLedgerMinusOneEntryIdPosition() throws Exception {
         ManagedLedgerConfig config = new ManagedLedgerConfig();
         int maxEntriesPerLedger = 10;
         config.setMaxEntriesPerLedger(maxEntriesPerLedger);
