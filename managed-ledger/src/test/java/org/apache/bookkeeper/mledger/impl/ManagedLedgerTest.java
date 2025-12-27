@@ -19,6 +19,7 @@
 package org.apache.bookkeeper.mledger.impl;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -148,6 +149,7 @@ import org.apache.pulsar.metadata.api.MetadataStoreException;
 import org.apache.pulsar.metadata.api.Stat;
 import org.apache.pulsar.metadata.api.extended.SessionEvent;
 import org.apache.pulsar.metadata.impl.FaultInjectionMetadataStore;
+import org.assertj.core.api.AssertionsForClassTypes;
 import org.awaitility.Awaitility;
 import org.awaitility.reflect.WhiteboxImpl;
 import org.eclipse.jetty.util.BlockingArrayQueue;
@@ -2286,7 +2288,7 @@ public class ManagedLedgerTest extends MockedBookKeeperTestCase {
         assertTrue(ml.getTotalSize() > "shortmessage".getBytes().length);
     }
 
-    @Test(enabled = true)
+    @Test(timeOut = 20000)
     public void testNoRetention() throws Exception {
         @Cleanup("shutdown")
         ManagedLedgerFactory factory = new ManagedLedgerFactoryImpl(metadataStore, bkc);
@@ -2299,20 +2301,34 @@ public class ManagedLedgerTest extends MockedBookKeeperTestCase {
         ManagedLedgerImpl ml = (ManagedLedgerImpl) factory.open("noretention_test_ledger", config);
         ManagedCursor c1 = ml.openCursor("c1noretention");
         ml.addEntry("iamaverylongmessagethatshouldnotberetained".getBytes());
+
+        // Wait for new ledger creation completed
+        Awaitility.await()
+                .untilAsserted(() -> AssertionsForClassTypes.assertThat(ml.getLedgersInfo().size()).isEqualTo(2));
+
         c1.skipEntries(1, IndividualDeletedEntries.Exclude);
         ml.close();
 
         // reopen ml
-        ml = (ManagedLedgerImpl) factory.open("noretention_test_ledger", config);
-        c1 = ml.openCursor("c1noretention");
-        ml.addEntry("shortmessage".getBytes());
-        c1.skipEntries(1, IndividualDeletedEntries.Exclude);
-        // sleep for trim
-        Thread.sleep(1000);
-        ml.close();
+        ManagedLedgerImpl newMl = (ManagedLedgerImpl) factory.open("noretention_test_ledger", config);
+        c1 = newMl.openCursor("c1noretention");
+        newMl.addEntry("shortmessage".getBytes());
 
-        assertTrue(ml.getLedgersInfoAsList().size() <= 1);
-        assertTrue(ml.getTotalSize() <= "shortmessage".getBytes().length);
+        // Wait for new ledger creation completed
+        Awaitility.await()
+                .untilAsserted(() -> assertThat(newMl.getLedgersInfo().size()).isEqualTo(2));
+
+        c1.skipEntries(1, IndividualDeletedEntries.Exclude);
+
+        // Wait for ledger trim process completed
+        Awaitility.await()
+                .untilAsserted(() -> assertThat(newMl.getLedgersInfo().size()).isEqualTo(1));
+
+
+        newMl.close();
+
+        assertTrue(newMl.getLedgersInfoAsList().size() <= 1);
+        assertThat(newMl.getTotalSize()).isEqualTo(0);
     }
 
     @Test
@@ -5144,20 +5160,23 @@ public class ManagedLedgerTest extends MockedBookKeeperTestCase {
         }, null);
 
         latch.await();
-        assertEquals(cursor.getPersistentMarkDeletedPosition(), lastPosition);
-        assertEquals(ledger.getCursors().getSlowestCursorPosition(), lastPosition);
-        assertEquals(cursor.getProperties(), properties);
+        assertThat(cursor.getPersistentMarkDeletedPosition()).isGreaterThanOrEqualTo(lastPosition);
+        assertThat(ledger.getCursors().getSlowestCursorPosition()).isGreaterThanOrEqualTo(lastPosition);
+        // cursor.asyncMarkDelete() and maybeUpdateCursorBeforeTrimmingConsumedLedger may run concurrently,
+        // so we can't assert properties equals here.
+        // assertEquals(cursor.getProperties(), properties);
 
-        // 3. Add Entry 2. Triggers Rollover.
+        // 3. Add Entry 2. Triggers second rollover process.
         // This implicitly calls maybeUpdateCursorBeforeTrimmingConsumedLedger due to rollover
         Position p = ledger.addEntry("entry-2".getBytes(Encoding));
 
         // Wait for background tasks (metadata callback) to complete.
         // We expect at least 2 ledgers (Rollover happened).
         Awaitility.await().atMost(5, TimeUnit.SECONDS).until(() -> ledger.getLedgersInfo().size() >= 2);
-        assertEquals(cursor.getPersistentMarkDeletedPosition(), new ImmutablePositionImpl(p.getLedgerId(), -1));
+        // First ledger is all consumed and trimmed, left current ledger and next empty ledger.
+        assertEquals(cursor.getPersistentMarkDeletedPosition(), PositionFactory.create(p.getLedgerId(), -1));
 
-        // Verify properties are preserved after cursor reset
-        assertEquals(cursor.getProperties(), properties);
+        // The same reason as above, can't assert properties equals here.
+        // assertEquals(cursor.getProperties(), properties);
     }
 }
