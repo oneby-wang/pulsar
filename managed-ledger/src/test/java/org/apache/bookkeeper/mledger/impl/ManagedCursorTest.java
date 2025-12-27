@@ -6146,7 +6146,7 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
             }
             addEntryLatch.await();
 
-            // Wait new ledger creation completed.
+            // Wait for new ledger creation completed.
             Awaitility.await().untilAsserted(() -> assertThat(ledger.getLedgersInfo().size()).isEqualTo(2));
 
             Long nextLedgerId = ledger.getLedgersInfo().lastEntry().getKey();
