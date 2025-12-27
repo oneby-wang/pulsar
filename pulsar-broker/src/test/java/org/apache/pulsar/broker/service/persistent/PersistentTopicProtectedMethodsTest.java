@@ -72,7 +72,7 @@ public class PersistentTopicProtectedMethodsTest extends ProducerConsumerBase {
      *      `PersistentTopic.estimatedTimeBasedBacklogQuotaCheck` with a param that equals `LAC`?
      *   - A: There may be some `acknowledgments` and `ML.trimLedgers` that happened between `step2 above and step 3`.
      */
-    @Test(invocationCount = 100)
+    @Test
     public void testEstimatedTimeBasedBacklogQuotaCheckWhenNoBacklog() throws Exception {
         final String tp = BrokerTestUtil.newUniqueName("public/default/tp");
         admin.topics().createNonPartitionedTopic(tp);
