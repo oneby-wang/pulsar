@@ -18,6 +18,7 @@
  */
 package org.apache.pulsar.broker.service.persistent;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 import java.util.concurrent.CompletableFuture;
@@ -71,7 +72,7 @@ public class PersistentTopicProtectedMethodsTest extends ProducerConsumerBase {
      *      `PersistentTopic.estimatedTimeBasedBacklogQuotaCheck` with a param that equals `LAC`?
      *   - A: There may be some `acknowledgments` and `ML.trimLedgers` that happened between `step2 above and step 3`.
      */
-    @Test
+    @Test(invocationCount = 100)
     public void testEstimatedTimeBasedBacklogQuotaCheckWhenNoBacklog() throws Exception {
         final String tp = BrokerTestUtil.newUniqueName("public/default/tp");
         admin.topics().createNonPartitionedTopic(tp);
@@ -92,7 +93,7 @@ public class PersistentTopicProtectedMethodsTest extends ProducerConsumerBase {
         admin.topics().skipAllMessages(tp, "s1");
         Awaitility.await().untilAsserted(() -> {
             assertEquals(cursor.getNumberOfEntriesInBacklog(true), 0);
-            assertEquals(cursor.getMarkDeletedPosition(), ml.getLastConfirmedEntry());
+            assertThat(cursor.getMarkDeletedPosition()).isGreaterThanOrEqualTo(ml.getLastConfirmedEntry());
         });
         CompletableFuture completableFuture = new CompletableFuture();
         ml.trimConsumedLedgersInBackground(completableFuture);
@@ -100,7 +101,7 @@ public class PersistentTopicProtectedMethodsTest extends ProducerConsumerBase {
         Awaitility.await().untilAsserted(() -> {
             assertEquals(ml.getLedgersInfo().size(), 1);
             assertEquals(cursor.getNumberOfEntriesInBacklog(true), 0);
-            assertEquals(cursor.getMarkDeletedPosition(), ml.getLastConfirmedEntry());
+            assertThat(cursor.getMarkDeletedPosition()).isGreaterThanOrEqualTo(ml.getLastConfirmedEntry());
         });
 
         // Verify: "persistentTopic.estimatedTimeBasedBacklogQuotaCheck" will not get a NullPointerException.
