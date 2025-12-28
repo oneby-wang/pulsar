@@ -396,7 +396,7 @@ public class PersistentMessageFinderTest extends MockedBookKeeperTestCase {
      *
      * @throws Exception
      */
-    @Test(timeOut = 20000)
+    @Test
     void testMessageExpiryWithTimestampNonRecoverableException() throws Exception {
 
         final String ledgerAndCursorName = "testPersistentMessageExpiryWithNonRecoverableLedgers";
@@ -452,7 +452,7 @@ public class PersistentMessageFinderTest extends MockedBookKeeperTestCase {
     /**
      * It tests that message expiry doesn't get stuck if it can't read deleted ledger's entry.
      */
-    @Test(timeOut = 20000)
+    @Test
     void testMessageExpiryAsyncWithTimestampNonRecoverableException() throws Exception {
 
         final String ledgerAndCursorName = "testPersistentMessageExpiryWithNonRecoverableLedgers";

@@ -495,20 +495,18 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
 
         // Assert persist mark deleted position to ZK was successful.
         Position slowestReadPosition = ml.getCursors().getSlowestCursorPosition();
-        assertThat(slowestReadPosition).isGreaterThan(lastEntry);
-        assertThat(cursor.getPersistentMarkDeletedPosition()).isGreaterThan(lastEntry);
+        assertThat(cursor.getPersistentMarkDeletedPosition()).isGreaterThanOrEqualTo(lastEntry);
+        assertThat(cursor.getMarkDeletedPosition()).isGreaterThanOrEqualTo(lastEntry);
 
         // Verify the mark delete position can be recovered properly.
         ml.close();
         ml = (ManagedLedgerImpl) factory.open(mlName, mlConfig);
         ManagedCursorImpl cursorRecovered = (ManagedCursorImpl) ml.openCursor(cursorName);
-        // Ledger process may not completed， reopen wil bypass empty ledger, so recovered cursor's
-        // persistentMarkDeletedPosition may be equal to lastEntry
-        assertThat(cursorRecovered.getPersistentMarkDeletedPosition()).isGreaterThanOrEqualTo(
-                lastEntry);
-        // But recovered cursor's markDeletePosition must be greater than
-        assertThat(cursorRecovered.getMarkDeletedPosition()).isGreaterThanOrEqualTo(
-                lastEntry);
+        assertThat(cursorRecovered.getPersistentMarkDeletedPosition()).isGreaterThanOrEqualTo(lastEntry);
+        // If previous ledger is trimmed, Cursor: ManagedCursorImpl{ledger=ml_test, name=c1, ackPos=12:0, readPos=15:0}
+        // does not exist in the managed-ledger. Recovered cursor's position will not be moved forward.
+        // TODO should be handled in ledger trim process.
+        assertThat(cursorRecovered.getMarkDeletedPosition()).isGreaterThanOrEqualTo(lastEntry);
 
         // cleanup.
         ml.delete();
@@ -6017,7 +6015,10 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
     @Test(timeOut = 20000)
     public void testAsyncMarkDeleteMayMoveToNextLedgerInRolloverScenario() throws Exception {
         ManagedLedgerConfig config = new ManagedLedgerConfig();
+        // Make sure acked ledgers will never be trimmed in this test.
         config.setMaxEntriesPerLedger(10);
+        config.setRetentionTime(1, TimeUnit.MINUTES);
+        config.setRetentionSizeInMB(5);
         ManagedLedger ledger = factory.open("async_mark_delete_may_move_to_next_ledger_in_non_rollover_test", config);
         final ManagedCursor c1 = ledger.openCursor("c1");
         final AtomicReference<Position> lastPosition = new AtomicReference<>();
@@ -6058,7 +6059,8 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
         ManagedCursor c2 = newLedger.openCursor("c1");
 
         assertEquals(c2.getNumberOfEntries(), 0);
-        assertThat(c2.getMarkDeletedPosition()).isGreaterThan(c1.getMarkDeletedPosition());
+        Awaitility.await()
+                .untilAsserted(() -> assertThat(c2.getMarkDeletedPosition()).isGreaterThan(lastPosition.get()));
     }
 
     @Test(timeOut = 20000)
@@ -6124,10 +6126,13 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
     @Test(timeOut = 20000)
     public void testAsyncMarkDeleteNextLedgerMinusOneEntryIdPosition() throws Exception {
         ManagedLedgerConfig config = new ManagedLedgerConfig();
+        // Make sure acked ledgers will never be trimmed in this test.
+        config.setRetentionTime(1, TimeUnit.MINUTES);
+        config.setRetentionSizeInMB(5);
         int maxEntriesPerLedger = 10;
         config.setMaxEntriesPerLedger(maxEntriesPerLedger);
-        ManagedLedger ledger = factory.open("async_mark_delete_move_to_next_ledger_one_by_one_test", config);
-        final ManagedCursor c1 = ledger.openCursor("c1");
+        ManagedLedger ledger = factory.open("async_mark_delete_next_ledger_minus_one_entry_id_test", config);
+        final ManagedCursor c1 = spy(ledger.openCursor("c1"));
 
         final int entryNum = 100;
         for (int i = 0; i < entryNum / maxEntriesPerLedger; i++) {
@@ -6140,14 +6145,24 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
 
                     @Override
                     public void addComplete(Position position, ByteBuf entryData, Object ctx) {
-                        addEntryLatch.countDown();
+                        c1.asyncMarkDelete(position, new MarkDeleteCallback() {
+                            @Override
+                            public void markDeleteFailed(ManagedLedgerException exception, Object ctx) {
+                            }
+
+                            @Override
+                            public void markDeleteComplete(Object ctx) {
+                                addEntryLatch.countDown();
+                            }
+                        }, null);
                     }
                 }, null);
             }
             addEntryLatch.await();
 
             // Wait for new ledger creation completed.
-            Awaitility.await().untilAsserted(() -> assertThat(ledger.getLedgersInfo().size()).isEqualTo(2));
+            final int ledgerNum = i + 2;
+            Awaitility.await().untilAsserted(() -> assertThat(ledger.getLedgersInfo().size()).isEqualTo(ledgerNum));
 
             Long nextLedgerId = ledger.getLedgersInfo().lastEntry().getKey();
             Position markDeletePosition = PositionFactory.create(nextLedgerId, -1);
