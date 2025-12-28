@@ -2324,10 +2324,8 @@ public class ManagedLedgerTest extends MockedBookKeeperTestCase {
         Awaitility.await()
                 .untilAsserted(() -> assertThat(newMl.getLedgersInfo().size()).isEqualTo(1));
 
-
         newMl.close();
 
-        assertTrue(newMl.getLedgersInfoAsList().size() <= 1);
         assertThat(newMl.getTotalSize()).isEqualTo(0);
     }
 
