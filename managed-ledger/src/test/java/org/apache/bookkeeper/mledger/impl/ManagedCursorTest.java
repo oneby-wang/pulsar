@@ -4252,7 +4252,7 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
                     ManagedLedger ledger2 = factory2.open("testFlushCursorAfterInactivity", config);
                     ManagedCursor c2 = ledger2.openCursor("c");
 
-                    assertEquals(c2.getMarkDeletedPosition(), positions.get(positions.size() - 1));
+                    assertThat(c2.getMarkDeletedPosition()).isGreaterThan(positions.get(positions.size() - 1));
                 });
     }
 
@@ -4311,7 +4311,7 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
                     ManagedLedger ledger2 = factory2.open("testFlushCursorAfterIndDelInactivity", config);
                     ManagedCursor c2 = ledger2.openCursor("c");
 
-                    assertEquals(c2.getMarkDeletedPosition(), positions.get(positions.size() - 1));
+                    assertThat(c2.getMarkDeletedPosition()).isGreaterThan(positions.get(positions.size() - 1));
                 });
     }
 
@@ -4362,6 +4362,7 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
                     ManagedLedgerFactory factory2 = new ManagedLedgerFactoryImpl(metadataStore, bkc);
                     ManagedLedger ledger2 = factory2.open("testFlushCursorAfterInactivity", config);
                     ManagedCursor c2 = ledger2.openCursor("c");
+
                     assertThat(c2.getMarkDeletedPosition()).isGreaterThan(positions.get(positions.size() - 1));
                 });
     }
