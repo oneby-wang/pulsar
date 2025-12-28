@@ -2262,20 +2262,17 @@ public class ManagedCursorImpl implements ManagedCursor {
         boolean shouldCursorMoveForward = false;
         try {
             if (lastConfirmedEntry.getLedgerId() >= newPosition.getLedgerId()) {
-                LedgerInfo attemptMarkDeleteledgerInfo = ledger.getLedgerInfo(newPosition.getLedgerId()).get();
+                LedgerInfo curMarkDeleteledgerInfo = ledger.getLedgerInfo(newPosition.getLedgerId()).get();
                 Long nextValidLedger = ledger.getNextValidLedger(newPosition.getLedgerId());
                 shouldCursorMoveForward = (nextValidLedger != null)
-                        && (attemptMarkDeleteledgerInfo != null
-                        && newPosition.getEntryId() + 1 >= attemptMarkDeleteledgerInfo.getEntries());
+                        && (curMarkDeleteledgerInfo != null
+                        && newPosition.getEntryId() + 1 >= curMarkDeleteledgerInfo.getEntries());
                 if (shouldCursorMoveForward) {
                     moveForwardPosition = PositionFactory.create(nextValidLedger, -1);
                 }
             } else {
                 Long nextValidLedger = ledger.getNextValidLedger(lastConfirmedEntry.getLedgerId());
-                LedgerInfo curMarkDeleteledgerInfo = ledger.getLedgerInfo(markDeletePos.getLedgerId()).get();
                 shouldCursorMoveForward = (nextValidLedger != null)
-                        && (curMarkDeleteledgerInfo != null
-                        && markDeletePos.getEntryId() + 1 >= curMarkDeleteledgerInfo.getEntries())
                         && (newPosition.getLedgerId() == nextValidLedger)
                         && (newPosition.getEntryId() == -1);
             }

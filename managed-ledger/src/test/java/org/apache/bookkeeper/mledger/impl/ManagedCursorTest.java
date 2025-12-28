@@ -6126,13 +6126,10 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
     @Test(timeOut = 20000)
     public void testAsyncMarkDeleteNextLedgerMinusOneEntryIdPosition() throws Exception {
         ManagedLedgerConfig config = new ManagedLedgerConfig();
-        // Make sure acked ledgers will never be trimmed in this test.
-        config.setRetentionTime(1, TimeUnit.MINUTES);
-        config.setRetentionSizeInMB(5);
         int maxEntriesPerLedger = 10;
         config.setMaxEntriesPerLedger(maxEntriesPerLedger);
         ManagedLedger ledger = factory.open("async_mark_delete_next_ledger_minus_one_entry_id_test", config);
-        final ManagedCursor c1 = spy(ledger.openCursor("c1"));
+        final ManagedCursor c1 = ledger.openCursor("c1");
 
         final int entryNum = 100;
         for (int i = 0; i < entryNum / maxEntriesPerLedger; i++) {
@@ -6145,24 +6142,14 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
 
                     @Override
                     public void addComplete(Position position, ByteBuf entryData, Object ctx) {
-                        c1.asyncMarkDelete(position, new MarkDeleteCallback() {
-                            @Override
-                            public void markDeleteFailed(ManagedLedgerException exception, Object ctx) {
-                            }
-
-                            @Override
-                            public void markDeleteComplete(Object ctx) {
-                                addEntryLatch.countDown();
-                            }
-                        }, null);
+                        addEntryLatch.countDown();
                     }
                 }, null);
             }
             addEntryLatch.await();
 
             // Wait for new ledger creation completed.
-            final int ledgerNum = i + 2;
-            Awaitility.await().untilAsserted(() -> assertThat(ledger.getLedgersInfo().size()).isEqualTo(ledgerNum));
+            Awaitility.await().untilAsserted(() -> assertThat(ledger.getLedgersInfo().size()).isEqualTo(2));
 
             Long nextLedgerId = ledger.getLedgersInfo().lastEntry().getKey();
             Position markDeletePosition = PositionFactory.create(nextLedgerId, -1);
