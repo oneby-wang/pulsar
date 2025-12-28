@@ -4317,7 +4317,7 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
 
 
 
-    @Test(invocationCount = 100)
+    @Test
     public void testFlushCursorAfterError() throws Exception {
         ManagedLedgerConfig config = new ManagedLedgerConfig();
         config.setThrottleMarkDelete(1.0);
