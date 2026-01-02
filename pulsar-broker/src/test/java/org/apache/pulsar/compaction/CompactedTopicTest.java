@@ -833,7 +833,7 @@ public class CompactedTopicTest extends MockedPulsarServiceBaseTest {
             long ledgerId = ((MessageIdImpl) finalLastMessage).getLedgerId();
             long entryId = ((MessageIdImpl) finalLastMessage).getEntryId();
             Assert.assertEquals(stats.lastConfirmedEntry, PositionFactory.create(ledgerId, entryId).toString());
-            // New ledger create, move markDeletePosition to currentLedgerId:-1
+            // New ledger created, move markDeletePosition to currentLedgerId:-1
             long currentLedgerId = stats.ledgers.get(stats.ledgers.size() - 1).ledgerId;
             Assert.assertEquals(stats.cursors.get(COMPACTION_SUBSCRIPTION).markDeletePosition,
                     PositionFactory.create(currentLedgerId, -1).toString());
