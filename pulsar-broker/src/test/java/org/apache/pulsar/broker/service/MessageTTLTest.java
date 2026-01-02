@@ -116,7 +116,7 @@ public class MessageTTLTest extends BrokerTestBase {
             PersistentTopicInternalStats internalStatsAfterExpire = admin.topics().getInternalStats(topicName);
             CursorStats statsAfterExpire = internalStatsAfterExpire.cursors.get(subscriptionName);
             log.info("markDeletePosition after expire {}", statsAfterExpire.markDeletePosition);
-            // New ledger create, move markDeletePosition to currentLedgerId:-1
+            // New ledger created, move markDeletePosition to currentLedgerId:-1
             long currentLedgerId =
                     internalStatsAfterExpire.ledgers.get(internalStatsAfterExpire.ledgers.size() - 1).ledgerId;
             assertEquals(statsAfterExpire.markDeletePosition,

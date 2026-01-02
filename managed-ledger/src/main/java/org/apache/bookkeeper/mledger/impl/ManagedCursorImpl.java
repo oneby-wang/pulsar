@@ -2262,11 +2262,11 @@ public class ManagedCursorImpl implements ManagedCursor {
         boolean shouldCursorMoveForward = false;
         try {
             if (lastConfirmedEntry.getLedgerId() >= newPosition.getLedgerId()) {
-                LedgerInfo curMarkDeleteledgerInfo = ledger.getLedgerInfo(newPosition.getLedgerId()).get();
+                LedgerInfo curMarkDeleteLedgerInfo = ledger.getLedgerInfo(newPosition.getLedgerId()).get();
                 Long nextValidLedger = ledger.getNextValidLedger(newPosition.getLedgerId());
                 shouldCursorMoveForward = (nextValidLedger != null)
-                        && (curMarkDeleteledgerInfo != null
-                        && newPosition.getEntryId() + 1 >= curMarkDeleteledgerInfo.getEntries());
+                        && (curMarkDeleteLedgerInfo != null
+                        && newPosition.getEntryId() + 1 >= curMarkDeleteLedgerInfo.getEntries());
                 if (shouldCursorMoveForward) {
                     moveForwardPosition = PositionFactory.create(nextValidLedger, -1);
                 }
