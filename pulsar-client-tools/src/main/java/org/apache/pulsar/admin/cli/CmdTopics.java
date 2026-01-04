@@ -3058,7 +3058,7 @@ public class CmdTopics extends CmdBase {
                     mergedResult.setLastMessageId(currentResult.getLastMessageId());
                 }
 
-                if (mergedResult.isAborted() || mergedResult.getEntries() >= backlogScanMaxEntries) {
+                if (!mergedResult.isAborted() || mergedResult.getEntries() >= backlogScanMaxEntries) {
                     break;
                 }
 
