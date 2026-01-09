@@ -6170,6 +6170,31 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
         }
     }
 
+    @Test(timeOut = 20000)
+    void testMarkDeletePreviousLacManyTimesInRolloverScenario() throws Exception {
+        ManagedLedgerConfig config = new ManagedLedgerConfig();
+        config.setMaxEntriesPerLedger(1);
+        // Set retention in order to not trim ledger.
+        config.setRetentionTime(20, TimeUnit.SECONDS);
+        config.setRetentionSizeInMB(1);
+
+        ManagedLedgerImpl ledger =
+                (ManagedLedgerImpl) factory.open("testMarkDeletePreviousLacManyTimesInRolloverScenario", config);
+        ManagedCursorImpl cursor = (ManagedCursorImpl) ledger.openCursor("c1");
+
+        Position position = ledger.addEntry("entry1".getBytes(Encoding));
+
+        // Wait for new ledger created.
+        Awaitility.await().untilAsserted(() -> assertThat(ledger.getLedgersInfo().size()).isEqualTo(2));
+
+        int markDeleteTimes = 10;
+        for (int i = 0; i < markDeleteTimes; i++) {
+            cursor.markDelete(position);
+        }
+
+        assertThat(cursor.getMarkDeletedPosition()).isGreaterThan(position);
+    }
+
     class TestPulsarMockBookKeeper extends PulsarMockBookKeeper {
         Map<Long, Integer> ledgerErrors = new HashMap<>();
 
