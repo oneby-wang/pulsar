@@ -37,6 +37,7 @@ import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Range;
@@ -6151,6 +6152,11 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
             // Wait for new ledger creation completed.
             Awaitility.await().untilAsserted(() -> assertThat(ledger.getLedgersInfo().size()).isEqualTo(2));
 
+            long ledgerId = ledger.getLedgersInfo().firstEntry().getValue().getLedgerId();
+            Position firstEntryPosition = PositionFactory.create(ledgerId, 0);
+            c1.markDelete(firstEntryPosition);
+            assertThat(c1.getMarkDeletedPosition()).isEqualTo(firstEntryPosition);
+
             Long nextLedgerId = ledger.getLedgersInfo().lastEntry().getKey();
             Position markDeletePosition = PositionFactory.create(nextLedgerId, -1);
             CountDownLatch markDeleteLatch = new CountDownLatch(1);
@@ -6193,6 +6199,34 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
         }
 
         assertThat(cursor.getMarkDeletedPosition()).isGreaterThan(position);
+    }
+
+    @Test
+    void testMarkDeletePositionNeverExceedLac() throws Exception {
+        ManagedLedgerConfig config = new ManagedLedgerConfig();
+        int maxEntriesPerLedger = 1;
+        config.setMaxEntriesPerLedger(maxEntriesPerLedger);
+        config.setRetentionTime(0, TimeUnit.MILLISECONDS);
+        config.setRetentionSizeInMB(0);
+
+        ManagedLedgerImpl ledger = (ManagedLedgerImpl) factory.open("testMarkDeletePositionNeverExceedLac", config);
+        ManagedCursorImpl cursor = (ManagedCursorImpl) ledger.openCursor("c1");
+
+        Position p1 = ledger.addEntry("entry-1".getBytes(Encoding));
+        Position p2 = ledger.addEntry("entry-2".getBytes(Encoding));
+
+        // Wait for new ledger created.
+        Awaitility.await().untilAsserted(() -> assertThat(ledger.getLedgersInfo().size()).isEqualTo(3));
+        long emptyLedgerId = ledger.getLedgersInfo().lastEntry().getValue().getLedgerId();
+
+        cursor.markDelete(p1);
+        assertThat(cursor.getMarkDeletedPosition()).isEqualTo(PositionFactory.create(p2.getLedgerId(), -1));
+
+        Position invalidMarkDeletePos = PositionFactory.create(emptyLedgerId, 1);
+        Throwable thrown = expectThrows(ManagedLedgerException.class, () -> {
+            cursor.markDelete(invalidMarkDeletePos);
+        });
+        assertThat(thrown.getMessage()).contains("Invalid mark deleted position");
     }
 
     class TestPulsarMockBookKeeper extends PulsarMockBookKeeper {
