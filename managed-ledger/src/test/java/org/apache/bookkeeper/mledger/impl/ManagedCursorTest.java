@@ -6176,7 +6176,7 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
         }
     }
 
-    @Test(timeOut = 20000)
+    @Test(timeOut = 20000, invocationCount = 100)
     void testMarkDeletePreviousLacManyTimesInRolloverScenario() throws Exception {
         ManagedLedgerConfig config = new ManagedLedgerConfig();
         config.setMaxEntriesPerLedger(1);
@@ -6189,6 +6189,7 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
         ManagedCursorImpl cursor = (ManagedCursorImpl) ledger.openCursor("c1");
 
         Position position = ledger.addEntry("entry1".getBytes(Encoding));
+        cursor.markDelete(position);
 
         // Wait for new ledger created.
         Awaitility.await().untilAsserted(() -> assertThat(ledger.getLedgersInfo().size()).isEqualTo(2));
