@@ -6203,26 +6203,37 @@ public class ManagedCursorTest extends MockedBookKeeperTestCase {
     }
 
     @Test
-    void testMarkDeletePositionNeverExceedLac() throws Exception {
+    void testMarkDeletePositionNeverExceedLacOrNextLedgerMinusOneEntryIdPos() throws Exception {
         ManagedLedgerConfig config = new ManagedLedgerConfig();
         int maxEntriesPerLedger = 1;
         config.setMaxEntriesPerLedger(maxEntriesPerLedger);
         config.setRetentionTime(0, TimeUnit.MILLISECONDS);
         config.setRetentionSizeInMB(0);
 
-        ManagedLedgerImpl ledger = (ManagedLedgerImpl) factory.open("testMarkDeletePositionNeverExceedLac", config);
+        ManagedLedgerImpl ledger =
+                (ManagedLedgerImpl) factory.open("testMarkDeletePositionNeverExceedLacOrNextLedgerMinusOneEntryIdPos",
+                        config);
         ManagedCursorImpl cursor = (ManagedCursorImpl) ledger.openCursor("c1");
 
         Position p1 = ledger.addEntry("entry-1".getBytes(Encoding));
         Position p2 = ledger.addEntry("entry-2".getBytes(Encoding));
+        Position p3 = ledger.addEntry("entry-3".getBytes(Encoding));
 
         // Wait for new ledger created.
-        Awaitility.await().untilAsserted(() -> assertThat(ledger.getLedgersInfo().size()).isEqualTo(3));
+        Awaitility.await().untilAsserted(() -> assertThat(ledger.getLedgersInfo().size()).isEqualTo(4));
         long emptyLedgerId = ledger.getLedgersInfo().lastEntry().getValue().getLedgerId();
 
         cursor.markDelete(p1);
         assertThat(cursor.getMarkDeletedPosition()).isEqualTo(PositionFactory.create(p2.getLedgerId(), -1));
 
+        // If requestMarkDeleteLedgerId == lacLedgerId, and current ledger is all consumed, and next ledger exists,
+        // we move markDeletePosition to nextLedgerId:-1. This is reasonable since we can also mark delete
+        // nextLedgerId:-1, which is also larger than lac.
+        Position lacPlusOnePos = PositionFactory.create(p2.getLedgerId(), 1);
+        cursor.markDelete(lacPlusOnePos);
+        assertThat(cursor.getMarkDeletedPosition()).isEqualTo(PositionFactory.create(p3.getLedgerId(), -1));
+
+        // But we can not mark delete emptyLedgerId:1, since it is a valid entry position.
         Position invalidMarkDeletePos = PositionFactory.create(emptyLedgerId, 1);
         Throwable thrown = expectThrows(ManagedLedgerException.class, () -> {
             cursor.markDelete(invalidMarkDeletePos);
