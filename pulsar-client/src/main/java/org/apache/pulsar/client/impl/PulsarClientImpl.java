@@ -171,23 +171,25 @@ public class PulsarClientImpl implements PulsarClient {
     @Getter
     private TransactionCoordinatorClientImpl tcClient;
 
+    private final Runnable memoryLimitTrigger = this::reduceConsumerReceiverQueueSize;
+
     public PulsarClientImpl(ClientConfigurationData conf) throws PulsarClientException {
-        this(conf, null, null, null, null, null, null, null, null);
+        this(conf, null, null, null, null, null, null, null, null, null);
     }
 
     public PulsarClientImpl(ClientConfigurationData conf, EventLoopGroup eventLoopGroup) throws PulsarClientException {
-        this(conf, eventLoopGroup, null, null, null, null, null, null, null);
+        this(conf, eventLoopGroup, null, null, null, null, null, null, null, null);
     }
 
     public PulsarClientImpl(ClientConfigurationData conf, EventLoopGroup eventLoopGroup, ConnectionPool cnxPool)
             throws PulsarClientException {
-        this(conf, eventLoopGroup, cnxPool, null, null, null, null, null, null);
+        this(conf, eventLoopGroup, cnxPool, null, null, null, null, null, null, null);
     }
 
     public PulsarClientImpl(ClientConfigurationData conf, EventLoopGroup eventLoopGroup, ConnectionPool cnxPool,
                             Timer timer)
             throws PulsarClientException {
-        this(conf, eventLoopGroup, cnxPool, timer, null, null, null, null, null);
+        this(conf, eventLoopGroup, cnxPool, timer, null, null, null, null, null, null);
     }
 
     public PulsarClientImpl(ClientConfigurationData conf, EventLoopGroup eventLoopGroup, ConnectionPool connectionPool,
@@ -196,7 +198,7 @@ public class PulsarClientImpl implements PulsarClient {
                             ScheduledExecutorProvider scheduledExecutorProvider)
             throws PulsarClientException {
         this(conf, eventLoopGroup, connectionPool, timer, externalExecutorProvider, internalExecutorProvider,
-                scheduledExecutorProvider, null, null);
+                scheduledExecutorProvider, null, null, null);
     }
 
     @Builder(builderClassName = "PulsarClientImplBuilder")
@@ -205,8 +207,8 @@ public class PulsarClientImpl implements PulsarClient {
                      ExecutorProvider internalExecutorProvider,
                      ScheduledExecutorProvider scheduledExecutorProvider,
                      ExecutorProvider lookupExecutorProvider,
-                     DnsResolverGroupImpl dnsResolverGroup) throws PulsarClientException {
-
+                     DnsResolverGroupImpl dnsResolverGroup,
+                     MemoryLimitController memoryLimitController) throws PulsarClientException {
         EventLoopGroup eventLoopGroupReference = null;
         ConnectionPool connectionPoolReference = null;
         try {
@@ -286,12 +288,13 @@ public class PulsarClientImpl implements PulsarClient {
                 }
             }
 
-            memoryLimitController = new MemoryLimitController(conf.getMemoryLimitBytes(),
-                    (long) (conf.getMemoryLimitBytes() * THRESHOLD_FOR_CONSUMER_RECEIVER_QUEUE_SIZE_SHRINKING),
-                    this::reduceConsumerReceiverQueueSize);
-            // Only create memory buffer metrics if memory limiting is enabled
-            if (memoryLimitController.isMemoryLimited()) {
-                memoryBufferStats = new MemoryBufferStats(instrumentProvider, memoryLimitController);
+            this.memoryLimitController = memoryLimitController != null ? memoryLimitController :
+                    new MemoryLimitController(conf.getMemoryLimitBytes(),
+                            (long) (conf.getMemoryLimitBytes() * THRESHOLD_FOR_CONSUMER_RECEIVER_QUEUE_SIZE_SHRINKING),
+                            this.memoryLimitTrigger);
+            // Only create memory buffer metrics if memory limit controller is local and memory limiting is enabled.
+            if (memoryLimitController == null && this.memoryLimitController.isMemoryLimited()) {
+                memoryBufferStats = new MemoryBufferStats(instrumentProvider, this.memoryLimitController);
             } else {
                 memoryBufferStats = null;
             }
@@ -985,6 +988,7 @@ public class PulsarClientImpl implements PulsarClient {
             } catch (PulsarClientException e) {
                 throwable = e;
             }
+
             if (memoryBufferStats != null) {
                 try {
                     memoryBufferStats.close();
@@ -993,6 +997,8 @@ public class PulsarClientImpl implements PulsarClient {
                     throwable = t;
                 }
             }
+            this.memoryLimitController.deregisterTrigger(memoryLimitTrigger);
+
             if (conf != null && conf.getAuthentication() != null) {
                 try {
                     conf.getAuthentication().close();
