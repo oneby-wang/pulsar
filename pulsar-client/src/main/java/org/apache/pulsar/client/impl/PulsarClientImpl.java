@@ -295,7 +295,7 @@ public class PulsarClientImpl implements PulsarClient {
                             this.memoryLimitTrigger);
             // Only create memory buffer metrics if memory limit controller is local and memory limiting is enabled.
             if (memoryLimitController == null && this.memoryLimitController.isMemoryLimited()) {
-                this.memoryBufferStats = new MemoryBufferStats(instrumentProvider, this.memoryLimitController);
+                this.memoryBufferStats = new MemoryBufferStats(this.instrumentProvider, this.memoryLimitController);
             } else {
                 this.memoryBufferStats = null;
             }
@@ -986,21 +986,11 @@ public class PulsarClientImpl implements PulsarClient {
             }
 
             if (memoryBufferStats != null) {
-                try {
-                    memoryBufferStats.close();
-                } catch (Throwable t) {
-                    log.warn("Failed to close memoryBufferStats", t);
-                    throwable = t;
-                }
+                memoryBufferStats.close();
             }
 
             if (memoryLimitController != null) {
-                try {
-                    memoryLimitController.deregisterTrigger(memoryLimitTrigger);
-                } catch (Throwable t) {
-                    log.warn("Failed to deregister trigger memoryBufferStats", t);
-                    throwable = t;
-                }
+                memoryLimitController.deregisterTrigger(memoryLimitTrigger);
             }
 
             if (conf != null && conf.getAuthentication() != null) {
