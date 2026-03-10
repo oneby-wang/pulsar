@@ -19,6 +19,7 @@
 package org.apache.pulsar.client.impl;
 
 import com.google.common.collect.Lists;
+import io.opentelemetry.api.OpenTelemetry;
 import java.net.InetSocketAddress;
 import java.util.Collection;
 import java.util.HashMap;
@@ -30,6 +31,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.pulsar.client.api.DnsResolverConfig;
 import org.apache.pulsar.client.api.EventLoopGroupConfig;
+import org.apache.pulsar.client.api.MemoryLimitConfig;
+import org.apache.pulsar.client.api.OpenTelemetryConfig;
 import org.apache.pulsar.client.api.PulsarClientSharedResources;
 import org.apache.pulsar.client.api.PulsarClientSharedResourcesBuilder;
 import org.apache.pulsar.client.api.ThreadPoolConfig;
@@ -201,6 +204,41 @@ public class PulsarClientSharedResourcesBuilderImpl implements PulsarClientShare
         }
     }
 
+    static class MemoryLimitResourceConfig implements ResourceConfig, MemoryLimitConfig {
+        long memoryLimit;
+        long triggerThreshold;
+
+        public MemoryLimitResourceConfig() {
+        }
+
+        @Override
+        public MemoryLimitConfig memoryLimit(long memoryLimit) {
+            this.memoryLimit = memoryLimit;
+            return this;
+        }
+
+        @Override
+        public MemoryLimitConfig triggerThreshold(long triggerThreshold) {
+            this.triggerThreshold = triggerThreshold;
+            return this;
+        }
+
+    }
+
+    static class OpenTelemetryResourceConfig implements ResourceConfig, OpenTelemetryConfig {
+        OpenTelemetry openTelemetry;
+
+        public OpenTelemetryResourceConfig() {
+        }
+
+        @Override
+        public OpenTelemetryConfig openTelemetry(OpenTelemetry openTelemetry) {
+            this.openTelemetry = openTelemetry;
+            return this;
+        }
+
+    }
+
     @Override
     public PulsarClientSharedResourcesBuilder resourceTypes(
             PulsarClientSharedResources.SharedResource... sharedResource) {
@@ -241,6 +279,10 @@ public class PulsarClientSharedResourcesBuilderImpl implements PulsarClientShare
                     return new ThreadPoolResourceConfig();
                 case Timer:
                     return new TimerResourceConfig();
+                case MemoryLimitController:
+                    return new MemoryLimitResourceConfig();
+                case OpenTelemetry:
+                    return new OpenTelemetryResourceConfig();
                 default:
                     throw new IllegalArgumentException("Unknown resource type: " + sharedResource.getType());
             }
@@ -273,6 +315,18 @@ public class PulsarClientSharedResourcesBuilderImpl implements PulsarClientShare
     @Override
     public PulsarClientSharedResourcesBuilder configureTimer(Consumer<TimerConfig> configurer) {
         configurer.accept(getOrCreateConfig(PulsarClientSharedResources.SharedResource.Timer));
+        return this;
+    }
+
+    @Override
+    public PulsarClientSharedResourcesBuilder configureMemoryLimitController(Consumer<MemoryLimitConfig> configurer) {
+        configurer.accept(getOrCreateConfig(PulsarClientSharedResources.SharedResource.MemoryLimitController));
+        return this;
+    }
+
+    @Override
+    public PulsarClientSharedResourcesBuilder configureOpenTelemetry(Consumer<OpenTelemetry> configurer) {
+        configurer.accept(getOrCreateConfig(PulsarClientSharedResources.SharedResource.OpenTelemetry));
         return this;
     }
 
