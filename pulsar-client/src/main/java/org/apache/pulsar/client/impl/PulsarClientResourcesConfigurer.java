@@ -155,7 +155,11 @@ class PulsarClientResourcesConfigurer {
         if (resourceConfig == null) {
             resourceConfig = new PulsarClientSharedResourcesBuilderImpl.MemoryLimitResourceConfig();
         }
-        return new MemoryLimitController(resourceConfig.memoryLimit, resourceConfig.triggerThreshold);
+        // Keep the same logic with PulsarClientImpl
+        long memoryLimit = resourceConfig.memoryLimit;
+        long triggerThreshold =
+                (long) (memoryLimit * PulsarClientImpl.THRESHOLD_FOR_CONSUMER_RECEIVER_QUEUE_SIZE_SHRINKING);
+        return new MemoryLimitController(memoryLimit, triggerThreshold);
     }
 
     static InstrumentProvider createInstrumentProviderWithResourceConfig(

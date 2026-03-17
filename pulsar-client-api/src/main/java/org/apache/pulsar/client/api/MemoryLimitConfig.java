@@ -22,8 +22,6 @@ package org.apache.pulsar.client.api;
 
 public interface MemoryLimitConfig {
 
-    MemoryLimitConfig memoryLimit(long memoryLimit);
-
-    MemoryLimitConfig triggerThreshold(long triggerThreshold);
+    MemoryLimitConfig memoryLimit(long memoryLimit, SizeUnit unit);
 
 }

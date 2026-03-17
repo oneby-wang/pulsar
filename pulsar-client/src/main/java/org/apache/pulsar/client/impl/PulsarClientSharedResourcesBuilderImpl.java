@@ -35,6 +35,7 @@ import org.apache.pulsar.client.api.MemoryLimitConfig;
 import org.apache.pulsar.client.api.OpenTelemetryConfig;
 import org.apache.pulsar.client.api.PulsarClientSharedResources;
 import org.apache.pulsar.client.api.PulsarClientSharedResourcesBuilder;
+import org.apache.pulsar.client.api.SizeUnit;
 import org.apache.pulsar.client.api.ThreadPoolConfig;
 import org.apache.pulsar.client.api.TimerConfig;
 import org.apache.pulsar.common.util.netty.DnsResolverUtil;
@@ -207,20 +208,13 @@ public class PulsarClientSharedResourcesBuilderImpl implements PulsarClientShare
 
     static class MemoryLimitResourceConfig implements ResourceConfig, MemoryLimitConfig {
         long memoryLimit;
-        long triggerThreshold;
 
         public MemoryLimitResourceConfig() {
         }
 
         @Override
-        public MemoryLimitConfig memoryLimit(long memoryLimit) {
-            this.memoryLimit = memoryLimit;
-            return this;
-        }
-
-        @Override
-        public MemoryLimitConfig triggerThreshold(long triggerThreshold) {
-            this.triggerThreshold = triggerThreshold;
+        public MemoryLimitConfig memoryLimit(long memoryLimit, SizeUnit unit) {
+            this.memoryLimit = unit.toBytes(memoryLimit);
             return this;
         }
 

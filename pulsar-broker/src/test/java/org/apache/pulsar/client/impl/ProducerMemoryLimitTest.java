@@ -33,7 +33,9 @@ import org.apache.pulsar.client.api.MessageRoutingMode;
 import org.apache.pulsar.client.api.ProducerConsumerBase;
 import org.apache.pulsar.client.api.PulsarClient;
 import org.apache.pulsar.client.api.PulsarClientException;
+import org.apache.pulsar.client.api.PulsarClientSharedResources;
 import org.apache.pulsar.client.api.SizeUnit;
+import org.awaitility.Awaitility;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -227,6 +229,84 @@ public class ProducerMemoryLimitTest extends ProducerConsumerBase {
         PulsarClientImpl clientImpl = (PulsarClientImpl) this.pulsarClient;
         final MemoryLimitController memoryLimitController = clientImpl.getMemoryLimitController();
         Assert.assertEquals(memoryLimitController.currentUsage(), 0);
+    }
+
+    @Test(timeOut = 15000)
+    public void testMultiPulsarClientProducerShareMemoryLimitController() throws Exception {
+        int msgSize = 100;
+        int msgCount = 6;
+        int memoryLimit = msgSize * msgCount;
+        PulsarClientSharedResources sharedResources = PulsarClientSharedResources.builder()
+                .configureMemoryLimitController(
+                        memoryLimitConfig -> memoryLimitConfig.memoryLimit(memoryLimit, SizeUnit.BYTES)).build();
+        @Cleanup
+        PulsarClientImpl pulsarClient1 =
+                ((PulsarClientImpl) PulsarClient.builder().serviceUrl(lookupUrl.toString())
+                        .sharedResources(sharedResources).build());
+        @Cleanup
+        PulsarClientImpl pulsarClient2 =
+                ((PulsarClientImpl) PulsarClient.builder().serviceUrl(lookupUrl.toString())
+                        .sharedResources(sharedResources).build());
+
+        Assert.assertSame(pulsarClient1.getMemoryLimitController(), pulsarClient2.getMemoryLimitController());
+
+        ProducerImpl<byte[]> producer1 = (ProducerImpl<byte[]>) pulsarClient1.newProducer()
+                .topic("testProducerShareMemoryLimitController")
+                .sendTimeout(10, TimeUnit.SECONDS)
+                .maxPendingMessages(0)
+                .blockIfQueueFull(false)
+                .enableBatching(false)
+                .create();
+        ProducerImpl<byte[]> producer2 = (ProducerImpl<byte[]>) pulsarClient2.newProducer()
+                .topic("testProducerShareMemoryLimitController")
+                .sendTimeout(10, TimeUnit.SECONDS)
+                .maxPendingMessages(0)
+                .blockIfQueueFull(false)
+                .enableBatching(false)
+                .create();
+
+        this.stopBroker();
+
+        byte[] msgBytes = new byte[msgSize];
+        for (int i = 0; i < msgCount / 2; i++) {
+            producer1.sendAsync(msgBytes);
+        }
+        Awaitility.await().atMost(5, TimeUnit.SECONDS)
+                .until(() -> pulsarClient1.getMemoryLimitController().currentUsage() == memoryLimit / 2);
+
+        for (int i = 0; i < msgCount / 2; i++) {
+            producer2.sendAsync(msgBytes);
+        }
+        Awaitility.await().atMost(5, TimeUnit.SECONDS)
+                .until(() -> pulsarClient2.getMemoryLimitController().currentUsage() == memoryLimit);
+
+        try {
+            producer1.send(msgBytes);
+            Assert.fail("producer can not send message due to memory limit exceeded");
+        } catch (PulsarClientException.MemoryBufferIsFullError ex) {
+            long currentUsage = pulsarClient1.getMemoryLimitController().currentUsage();
+            Assert.assertEquals(currentUsage, memoryLimit);
+        }
+
+        try {
+            producer2.send(msgBytes);
+            Assert.fail("producer can not send message due to memory limit exceeded");
+        } catch (PulsarClientException.MemoryBufferIsFullError ex) {
+            long currentUsage = pulsarClient2.getMemoryLimitController().currentUsage();
+            Assert.assertEquals(currentUsage, memoryLimit);
+        }
+
+        producer1.close();
+        Assert.assertEquals(pulsarClient1.getMemoryLimitController().currentUsage(), memoryLimit / 2);
+
+        for (int i = 0; i < msgCount / 2; i++) {
+            producer2.sendAsync(msgBytes);
+        }
+        Awaitility.await().atMost(5, TimeUnit.SECONDS)
+                .until(() -> pulsarClient2.getMemoryLimitController().currentUsage() == memoryLimit);
+
+        producer2.close();
+        Assert.assertEquals(pulsarClient1.getMemoryLimitController().currentUsage(), 0);
     }
 
     private void initClientWithMemoryLimit() throws PulsarClientException {
