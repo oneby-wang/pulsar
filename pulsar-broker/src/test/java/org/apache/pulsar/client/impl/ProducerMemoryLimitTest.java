@@ -30,6 +30,7 @@ import java.util.concurrent.TimeUnit;
 import lombok.Cleanup;
 import org.apache.pulsar.client.api.CompressionType;
 import org.apache.pulsar.client.api.MessageRoutingMode;
+import org.apache.pulsar.client.api.Producer;
 import org.apache.pulsar.client.api.ProducerConsumerBase;
 import org.apache.pulsar.client.api.PulsarClient;
 import org.apache.pulsar.client.api.PulsarClientException;
@@ -240,24 +241,22 @@ public class ProducerMemoryLimitTest extends ProducerConsumerBase {
                 .configureMemoryLimitController(
                         memoryLimitConfig -> memoryLimitConfig.memoryLimit(memoryLimit, SizeUnit.BYTES)).build();
         @Cleanup
-        PulsarClientImpl pulsarClient1 =
-                ((PulsarClientImpl) PulsarClient.builder().serviceUrl(lookupUrl.toString())
-                        .sharedResources(sharedResources).build());
+        PulsarClientImpl pulsarClient1 = ((PulsarClientImpl) PulsarClient.builder().serviceUrl(lookupUrl.toString())
+                .sharedResources(sharedResources).build());
         @Cleanup
-        PulsarClientImpl pulsarClient2 =
-                ((PulsarClientImpl) PulsarClient.builder().serviceUrl(lookupUrl.toString())
-                        .sharedResources(sharedResources).build());
+        PulsarClientImpl pulsarClient2 = ((PulsarClientImpl) PulsarClient.builder().serviceUrl(lookupUrl.toString())
+                .sharedResources(sharedResources).build());
 
         Assert.assertSame(pulsarClient1.getMemoryLimitController(), pulsarClient2.getMemoryLimitController());
 
-        ProducerImpl<byte[]> producer1 = (ProducerImpl<byte[]>) pulsarClient1.newProducer()
+        Producer<byte[]> producer1 = pulsarClient1.newProducer()
                 .topic("testProducerShareMemoryLimitController")
                 .sendTimeout(10, TimeUnit.SECONDS)
                 .maxPendingMessages(0)
                 .blockIfQueueFull(false)
                 .enableBatching(false)
                 .create();
-        ProducerImpl<byte[]> producer2 = (ProducerImpl<byte[]>) pulsarClient2.newProducer()
+        Producer<byte[]> producer2 =  pulsarClient2.newProducer()
                 .topic("testProducerShareMemoryLimitController")
                 .sendTimeout(10, TimeUnit.SECONDS)
                 .maxPendingMessages(0)
