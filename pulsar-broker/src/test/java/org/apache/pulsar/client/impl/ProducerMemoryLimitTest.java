@@ -251,14 +251,14 @@ public class ProducerMemoryLimitTest extends ProducerConsumerBase {
 
         Producer<byte[]> producer1 = pulsarClient1.newProducer()
                 .topic("testProducerShareMemoryLimitController")
-                .sendTimeout(10, TimeUnit.SECONDS)
+                .sendTimeout(20, TimeUnit.SECONDS)
                 .maxPendingMessages(0)
                 .blockIfQueueFull(false)
                 .enableBatching(false)
                 .create();
-        Producer<byte[]> producer2 =  pulsarClient2.newProducer()
+        Producer<byte[]> producer2 = pulsarClient2.newProducer()
                 .topic("testProducerShareMemoryLimitController")
-                .sendTimeout(10, TimeUnit.SECONDS)
+                .sendTimeout(20, TimeUnit.SECONDS)
                 .maxPendingMessages(0)
                 .blockIfQueueFull(false)
                 .enableBatching(false)
@@ -267,24 +267,30 @@ public class ProducerMemoryLimitTest extends ProducerConsumerBase {
         this.stopBroker();
 
         byte[] msgBytes = new byte[msgSize];
+        int halfMsgCount = msgCount / 2;
+        int producer1MemoryUsage = halfMsgCount * msgSize;
         for (int i = 0; i < msgCount / 2; i++) {
             producer1.sendAsync(msgBytes);
         }
         Awaitility.await().atMost(5, TimeUnit.SECONDS)
-                .until(() -> pulsarClient1.getMemoryLimitController().currentUsage() == memoryLimit / 2);
+                .until(() -> pulsarClient1.getMemoryLimitController().currentUsage() == producer1MemoryUsage);
 
-        for (int i = 0; i < msgCount / 2; i++) {
+        // The MemoryLimitController.tryReserveMemory() method returns false only when currentUsage > memoryLimit.
+        int producer2MsgCount = halfMsgCount + 1;
+        int producer2MemoryUsage = producer2MsgCount * msgSize;
+        int totalMemoryUsage = producer1MemoryUsage + producer2MemoryUsage;
+        for (int i = 0; i < producer2MsgCount; i++) {
             producer2.sendAsync(msgBytes);
         }
         Awaitility.await().atMost(5, TimeUnit.SECONDS)
-                .until(() -> pulsarClient2.getMemoryLimitController().currentUsage() == memoryLimit);
+                .until(() -> pulsarClient2.getMemoryLimitController().currentUsage() == totalMemoryUsage);
 
         try {
             producer1.send(msgBytes);
             Assert.fail("producer can not send message due to memory limit exceeded");
         } catch (PulsarClientException.MemoryBufferIsFullError ex) {
             long currentUsage = pulsarClient1.getMemoryLimitController().currentUsage();
-            Assert.assertEquals(currentUsage, memoryLimit);
+            Assert.assertEquals(currentUsage, totalMemoryUsage);
         }
 
         try {
@@ -292,17 +298,17 @@ public class ProducerMemoryLimitTest extends ProducerConsumerBase {
             Assert.fail("producer can not send message due to memory limit exceeded");
         } catch (PulsarClientException.MemoryBufferIsFullError ex) {
             long currentUsage = pulsarClient2.getMemoryLimitController().currentUsage();
-            Assert.assertEquals(currentUsage, memoryLimit);
+            Assert.assertEquals(currentUsage, totalMemoryUsage);
         }
 
         producer1.close();
-        Assert.assertEquals(pulsarClient1.getMemoryLimitController().currentUsage(), memoryLimit / 2);
+        Assert.assertEquals(pulsarClient1.getMemoryLimitController().currentUsage(), producer2MemoryUsage);
 
-        for (int i = 0; i < msgCount / 2; i++) {
+        for (int i = 0; i < halfMsgCount; i++) {
             producer2.sendAsync(msgBytes);
         }
         Awaitility.await().atMost(5, TimeUnit.SECONDS)
-                .until(() -> pulsarClient2.getMemoryLimitController().currentUsage() == memoryLimit);
+                .until(() -> pulsarClient2.getMemoryLimitController().currentUsage() == totalMemoryUsage);
 
         producer2.close();
         Assert.assertEquals(pulsarClient1.getMemoryLimitController().currentUsage(), 0);
