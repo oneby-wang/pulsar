@@ -22,8 +22,19 @@ package org.apache.pulsar.client.api;
 
 import io.opentelemetry.api.OpenTelemetry;
 
+/**
+ * Configuration interface for open telemetry settings.
+ */
 public interface OpenTelemetryConfig {
 
+    /**
+     * Configure OpenTelemetry for this shared client instance.
+     * <p>
+     * See also {@link ClientBuilder#openTelemetry(OpenTelemetry)}.
+     *
+     * @param openTelemetry the open telemetry instance
+     * @return the open telemetry configuration instance for chained calls
+     */
     OpenTelemetryConfig openTelemetry(OpenTelemetry openTelemetry);
 
 }
