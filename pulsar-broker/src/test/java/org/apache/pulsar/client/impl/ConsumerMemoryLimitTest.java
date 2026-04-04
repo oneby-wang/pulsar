@@ -146,46 +146,53 @@ public class ConsumerMemoryLimitTest extends SharedPulsarBaseTest {
         Assert.assertNotNull(topic1Message);
         Assert.assertEquals(topic1Consumer.getCurrentReceiverQueueSize(), 1);
 
+        // Trigger ConsumerBase.expectMoreIncomingMessages() method to expand receiverQueueSize.
         topic1Consumer.receiveAsync();
-        Assert.assertEquals(topic1Consumer.getCurrentReceiverQueueSize(), 2);
+        Awaitility.await().until(() -> topic1Consumer.getCurrentReceiverQueueSize() == 2);
 
 
         topic2Producer.send(new byte[msgSize]);
-        Awaitility.await().until(topic1Consumer.scaleReceiverQueueHint::get);
+        Awaitility.await().until(topic2Consumer.scaleReceiverQueueHint::get);
 
         Message<byte[]> topic2Message = topic2Consumer.receive();
         Assert.assertNotNull(topic2Message);
         Assert.assertEquals(topic2Consumer.getCurrentReceiverQueueSize(), 1);
 
+        // Trigger ConsumerBase.expectMoreIncomingMessages() method to expand receiverQueueSize.
         topic2Consumer.receiveAsync();
-        Assert.assertEquals(topic2Consumer.getCurrentReceiverQueueSize(), 2);
+        Awaitility.await().until(() -> topic2Consumer.getCurrentReceiverQueueSize() == 2);
 
 
         // topic1Consumer.receiveAsync() will take one message, so we should send (msgCount + 1) messages.
+        // Trigger ConsumerBase.reduceCurrentReceiverQueueSize() method to reduce receiverQueueSize.
         topic1Consumer.setCurrentReceiverQueueSize(msgCount);
         for (int i = 0; i < msgCount + 1; i++) {
             topic1Producer.send(new byte[msgSize]);
         }
-        Assert.assertEquals(topic1Consumer.getCurrentReceiverQueueSize(), 1);
-        Assert.assertEquals(topic2Consumer.getCurrentReceiverQueueSize(), 1);
-        Assert.assertEquals(memoryLimitController1.currentUsage(), memoryLimit);
+        Awaitility.await().until(() -> memoryLimitController1.currentUsage() == memoryLimit);
+        Awaitility.await().until(() -> topic1Consumer.getCurrentReceiverQueueSize() == 1);
+        Awaitility.await().until(() -> topic2Consumer.getCurrentReceiverQueueSize() == 1);
 
         // topic2Consumer.receiveAsync() will take one message, so we should send (msgCount + 1) messages.
         for (int i = 0; i < msgCount + 1; i++) {
             topic2Producer.send(new byte[msgSize]);
         }
+        // topic2Consumer will not expand receiverQueueSize due to memory limit reached.
         for (int i = 0; i < msgCount; i++) {
             topic2Message = topic2Consumer.receive();
             Assert.assertNotNull(topic2Message);
             Assert.assertEquals(topic2Consumer.getCurrentReceiverQueueSize(), 1);
         }
 
+        // Close topic1Consumer to clear release memory.
         topic1Consumer.close();
         Assert.assertEquals(memoryLimitController1.currentUsage(), 0);
 
+        // Trigger ConsumerBase.expectMoreIncomingMessages() method to expand receiverQueueSize.
         topic2Consumer.receiveAsync();
-        Assert.assertEquals(topic2Consumer.getCurrentReceiverQueueSize(), 2);
+        Awaitility.await().until(() -> topic2Consumer.getCurrentReceiverQueueSize() == 2);
 
+        // Close topic1Consumer to clear release memory.
         topic2Consumer.close();
         Assert.assertEquals(memoryLimitController2.currentUsage(), 0);
     }
