@@ -1737,8 +1737,8 @@ public class PulsarAdminToolTest {
         verify(mockTopics).createSubscription("persistent://myprop/ns1/ds1", "sub1",
                 MessageId.earliest, false, null);
 
-        cmdTopics.run(split("trim-topic persistent://myprop/clust/ns1/ds1"));
-        verify(mockTopics).trimTopic("persistent://myprop/clust/ns1/ds1");
+        cmdTopics.run(split("trim-topic persistent://myprop/ns1/ds1"));
+        verify(mockTopics).trimTopic("persistent://myprop/ns1/ds1");
 
         // jcommander is stateful, you cannot parse the same command twice
         cmdTopics = new CmdTopics(() -> admin);
