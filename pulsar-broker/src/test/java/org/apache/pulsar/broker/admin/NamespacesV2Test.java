@@ -23,8 +23,11 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
-import static org.testng.Assert.*;
-
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
@@ -353,7 +356,8 @@ public class NamespacesV2Test extends MockedPulsarServiceBaseTest {
 
         // 2.set enable migration
         boolean enableMigrationReq = true;
-        asyncRequests(response -> namespaces.enableMigration(response, testTenant, enableMigrationGroupNs, enableMigrationReq));
+        asyncRequests(response -> namespaces.enableMigration(response, testTenant, enableMigrationGroupNs,
+                enableMigrationReq));
 
         // 3.query namespace num bundles, should be conf.getDefaultNumberOfNamespaceBundles()
         BundlesData bundlesData = (BundlesData) asyncRequests(
@@ -377,7 +381,8 @@ public class NamespacesV2Test extends MockedPulsarServiceBaseTest {
 
         // 2.set enable migration
         boolean enableMigrationReq = true;
-        asyncRequests(response -> namespaces.enableMigration(response, testTenant, enableMigrationGroupNs, enableMigrationReq));
+        asyncRequests(response -> namespaces.enableMigration(response, testTenant, enableMigrationGroupNs,
+                enableMigrationReq));
 
         // 3.query namespace num bundles, should be policies.bundles, which we set before
         BundlesData bundlesData = (BundlesData) asyncRequests(
