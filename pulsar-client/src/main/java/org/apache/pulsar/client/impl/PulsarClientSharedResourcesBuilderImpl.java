@@ -320,7 +320,7 @@ public class PulsarClientSharedResourcesBuilderImpl implements PulsarClientShare
     }
 
     @Override
-    public PulsarClientSharedResourcesBuilder configureOpenTelemetry(Consumer<OpenTelemetry> configurer) {
+    public PulsarClientSharedResourcesBuilder configureOpenTelemetry(Consumer<OpenTelemetryConfig> configurer) {
         configurer.accept(getOrCreateConfig(PulsarClientSharedResources.SharedResource.OpenTelemetry));
         return this;
     }

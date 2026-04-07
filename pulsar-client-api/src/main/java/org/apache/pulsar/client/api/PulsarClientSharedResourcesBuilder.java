@@ -19,7 +19,6 @@
 package org.apache.pulsar.client.api;
 
 import static org.apache.pulsar.client.api.PulsarClientSharedResources.SharedResource;
-import io.opentelemetry.api.OpenTelemetry;
 import java.util.Collection;
 import java.util.function.Consumer;
 
@@ -134,6 +133,6 @@ public interface PulsarClientSharedResourcesBuilder {
      * @param configurer a consumer that configures the open telemetry settings
      * @return this builder instance for method chaining
      */
-    PulsarClientSharedResourcesBuilder configureOpenTelemetry(Consumer<OpenTelemetry> configurer);
+    PulsarClientSharedResourcesBuilder configureOpenTelemetry(Consumer<OpenTelemetryConfig> configurer);
 
 }
