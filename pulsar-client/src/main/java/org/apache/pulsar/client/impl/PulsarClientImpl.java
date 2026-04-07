@@ -994,7 +994,12 @@ public class PulsarClientImpl implements PulsarClient {
             }
 
             if (memoryBufferStats != null) {
-                memoryBufferStats.close();
+                try {
+                    memoryBufferStats.close();
+                } catch (Throwable t) {
+                    log.warn("Failed to close memoryBufferStats", t);
+                    throwable = t;
+                }
             }
 
             if (memoryLimitController != null) {
