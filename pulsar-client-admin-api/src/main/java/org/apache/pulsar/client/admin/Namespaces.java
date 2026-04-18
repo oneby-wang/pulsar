@@ -4725,9 +4725,7 @@ public interface Namespaces {
     CompletableFuture<Void> removeNamespaceEntryFiltersAsync(String namespace);
 
     /**
-     * Enable migration for all topics within a namespace.
-     * <p/>
-     * Migrate all topics of a namespace to new broker.
+     * Update the migration state for a namespace.
      * <p/>
      * Request example:
      *
@@ -4747,6 +4745,30 @@ public interface Namespaces {
      *             Unexpected error
      */
     void updateMigrationState(String namespace, boolean migrated) throws PulsarAdminException;
+
+    /**
+     * Get the migration state for a namespace.
+     *
+     * @param namespace
+     *            Namespace name
+     * @return whether the namespace is marked as migrated
+     * @throws NotAuthorizedException
+     *             Don't have admin permission
+     * @throws NotFoundException
+     *             Namespace does not exist
+     * @throws PulsarAdminException
+     *             Unexpected error
+     */
+    boolean getMigrationState(String namespace) throws PulsarAdminException;
+
+    /**
+     * Get the migration state for a namespace asynchronously.
+     *
+     * @param namespace
+     *            Namespace name
+     * @return whether the namespace is marked as migrated
+     */
+    CompletableFuture<Boolean> getMigrationStateAsync(String namespace);
 
     /**
      * Set DispatcherPauseOnAckStatePersistent for a namespace asynchronously.
