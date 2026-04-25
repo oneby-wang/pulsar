@@ -3013,13 +3013,13 @@ public class CmdTopics extends CmdBase {
         @Option(names = {"--backlog-scan-max-entries",
                 "-b"}, description = "The maximum number of backlog entries the client will scan before terminating "
                 + "its loop", required = false)
-        private long backlogScanMaxEntries = -1;
+        private Long backlogScanMaxEntries;
 
         @Option(names = {"--quiet", "-q"}, description = "Disable analyze-backlog progress reporting", required = false)
         private boolean quiet = false;
 
-        @Option(names = {"--plain-print",
-                "-pp"}, description = "Plain(Non-pretty) print the final result output as NDJSON", required = false)
+        @Option(names = {"--plain"}, description = "Plain(Non-pretty) print backlog results as NDJSON",
+                required = false)
         private boolean plainPrint = false;
 
         @Override
@@ -3032,14 +3032,22 @@ public class CmdTopics extends CmdBase {
                 startPosition = Optional.of(messageId);
             }
 
-            AnalyzeSubscriptionBacklogResult backlogResult =
-                    getTopics().analyzeSubscriptionBacklogAsync(persistentTopic, subName, startPosition, result -> {
-                        boolean terminate = result.getEntries() >= backlogScanMaxEntries;
-                        if (!quiet && !terminate) {
-                            print(result, false);
-                        }
-                        return terminate;
-                    }).get();
+            AnalyzeSubscriptionBacklogResult backlogResult;
+            if (backlogScanMaxEntries == null) {
+                backlogResult = getTopics().analyzeSubscriptionBacklog(persistentTopic, subName, startPosition);
+            } else {
+                if (backlogScanMaxEntries <= 0) {
+                    throw new ParameterException("--backlog-scan-max-entries must be greater than 0");
+                }
+                backlogResult = getTopics().analyzeSubscriptionBacklog(persistentTopic, subName, startPosition,
+                        result -> {
+                            boolean terminate = result.getEntries() >= backlogScanMaxEntries;
+                            if (!quiet && !terminate) {
+                                print(result, !plainPrint);
+                            }
+                            return terminate;
+                        });
+            }
             print(backlogResult, !plainPrint);
         }
     }
