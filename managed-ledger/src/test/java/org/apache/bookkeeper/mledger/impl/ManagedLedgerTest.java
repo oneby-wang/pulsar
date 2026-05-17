@@ -5411,7 +5411,7 @@ public class ManagedLedgerTest extends MockedBookKeeperTestCase {
         assertEquals(cursor.getProperties(), expectedProperties);
     }
 
-    @Test
+    @Test(invocationCount = 100)
     @SuppressWarnings("unchecked")
     public void testAdvanceCursorsIfNecessaryNeverLoseMarkDeleteProperties() throws Exception {
         ManagedLedgerConfig config = new ManagedLedgerConfig();
@@ -5474,6 +5474,7 @@ public class ManagedLedgerTest extends MockedBookKeeperTestCase {
         nonDurableCursor.markDelete(pos2, properties);
 
         advanceCursorsMarkDeleteCompletedLatch.await();
+        assertEquals(nonDurableCursor.getMarkDeletedPosition(), pos2);
         assertEquals(nonDurableCursor.getProperties(), properties);
     }
 }
