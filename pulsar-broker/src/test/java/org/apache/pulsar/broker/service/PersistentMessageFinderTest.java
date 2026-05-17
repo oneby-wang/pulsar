@@ -19,6 +19,7 @@
 package org.apache.pulsar.broker.service;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -34,11 +35,14 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -1097,5 +1101,65 @@ public class PersistentMessageFinderTest extends MockedBookKeeperTestCase {
         assertNotNull(range.getLeft());
         assertNull(range.getRight());
         assertEquals(range.getLeft(), PositionFactory.create(1, 9));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void testExpireMessagesNeverLoseMarkDeleteProperties() throws Exception {
+        final String ledgerAndCursorName = "testExpireMessagesNeverLoseMarkDeleteProperties";
+
+        ManagedLedgerConfig config = new ManagedLedgerConfig();
+        config.setRetentionSizeInMB(10);
+        config.setRetentionTime(1, TimeUnit.HOURS);
+        ManagedLedgerImpl ledger = (ManagedLedgerImpl) factory.open(ledgerAndCursorName, config);
+        ManagedCursorImpl cursor = (ManagedCursorImpl) ledger.openCursor(ledgerAndCursorName);
+        ManagedCursorImpl spyCursor = spy(cursor);
+
+        Position pos1 = ledger.addEntry(createMessageWrittenToLedger("msg-1"));
+        Position pos2 = ledger.addEntry(createMessageWrittenToLedger("msg-2"));
+
+        CountDownLatch userMarkDeleteCompletedLatch = new CountDownLatch(1);
+        CountDownLatch expiryMarkDeleteCompletedLatch = new CountDownLatch(1);
+
+        doAnswer(invocation -> {
+            Map<String, Long> invocationProperties = invocation.getArgument(1);
+
+            // Let the user-triggered markDelete() with properties complete first.
+            if (invocationProperties != null && invocationProperties.size() == 1) {
+                try {
+                    return invocation.callRealMethod();
+                } finally {
+                    userMarkDeleteCompletedLatch.countDown();
+                }
+            }
+
+            // Then let the expiry-triggered mark-delete proceed with inherited properties.
+            if (invocationProperties == null || invocationProperties.isEmpty()) {
+                userMarkDeleteCompletedLatch.await();
+                try {
+                    return invocation.callRealMethod();
+                } finally {
+                    expiryMarkDeleteCompletedLatch.countDown();
+                }
+            }
+
+            return invocation.callRealMethod();
+        }).when(spyCursor).asyncMarkDelete(any(Position.class), nullable(Map.class), any(AsyncCallbacks.MarkDeleteCallback.class),
+                nullable(Object.class));
+
+        PersistentTopic topic = mockPersistentTopic("topicname");
+        PersistentMessageExpiryMonitor monitor = new PersistentMessageExpiryMonitor(topic,
+                spyCursor.getName(), spyCursor, null);
+
+        // Start expiry first so it captures the current properties before the user mark-delete completes.
+        CompletableFuture.runAsync(() -> monitor.findEntryComplete(pos2, null));
+
+        Map<String, Long> properties = new HashMap<>();
+        properties.put("test-property", 1L);
+        spyCursor.markDelete(pos1, properties);
+
+        expiryMarkDeleteCompletedLatch.await();
+        assertEquals(spyCursor.getMarkDeletedPosition(), pos2);
+        assertEquals(spyCursor.getProperties(), properties);
     }
 }
