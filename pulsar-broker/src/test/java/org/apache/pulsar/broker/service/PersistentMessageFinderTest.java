@@ -1144,8 +1144,9 @@ public class PersistentMessageFinderTest extends MockedBookKeeperTestCase {
             }
 
             return invocation.callRealMethod();
-        }).when(spyCursor).asyncMarkDelete(any(Position.class), nullable(Map.class), any(AsyncCallbacks.MarkDeleteCallback.class),
-                nullable(Object.class));
+        }).when(spyCursor)
+                .asyncMarkDelete(any(Position.class), nullable(Map.class), any(AsyncCallbacks.MarkDeleteCallback.class),
+                        nullable(Object.class));
 
         PersistentTopic topic = mockPersistentTopic("topicname");
         PersistentMessageExpiryMonitor monitor = new PersistentMessageExpiryMonitor(topic,
