@@ -1118,24 +1118,21 @@ public class PersistentMessageFinderTest extends MockedBookKeeperTestCase {
         Position pos1 = ledger.addEntry(createMessageWrittenToLedger("msg-1"));
         Position pos2 = ledger.addEntry(createMessageWrittenToLedger("msg-2"));
 
-        CountDownLatch userMarkDeleteCompletedLatch = new CountDownLatch(1);
+        CountDownLatch expiryMarkDeleteEnteredLatch = new CountDownLatch(1);
+        CountDownLatch cursorMarkDeleteCompletedLatch = new CountDownLatch(1);
         CountDownLatch expiryMarkDeleteCompletedLatch = new CountDownLatch(1);
 
         doAnswer(invocation -> {
             Map<String, Long> invocationProperties = invocation.getArgument(1);
 
-            // Let the user-triggered markDelete() with properties complete first.
             if (invocationProperties != null && invocationProperties.size() == 1) {
-                try {
-                    return invocation.callRealMethod();
-                } finally {
-                    userMarkDeleteCompletedLatch.countDown();
-                }
+                return invocation.callRealMethod();
             }
 
-            // Then let the expiry-triggered mark-delete proceed with inherited properties.
+            // Pause the expiry-triggered mark-delete so the user markDelete() can complete first.
             if (invocationProperties == null || invocationProperties.isEmpty()) {
-                userMarkDeleteCompletedLatch.await();
+                expiryMarkDeleteEnteredLatch.countDown();
+                assertTrue(cursorMarkDeleteCompletedLatch.await(5, TimeUnit.SECONDS));
                 try {
                     return invocation.callRealMethod();
                 } finally {
@@ -1152,14 +1149,15 @@ public class PersistentMessageFinderTest extends MockedBookKeeperTestCase {
         PersistentMessageExpiryMonitor monitor = new PersistentMessageExpiryMonitor(topic,
                 spyCursor.getName(), spyCursor, null);
 
-        // Start expiry first so it captures the current properties before the user mark-delete completes.
         CompletableFuture.runAsync(() -> monitor.findEntryComplete(pos2, null));
+        assertTrue(expiryMarkDeleteEnteredLatch.await(5, TimeUnit.SECONDS));
 
         Map<String, Long> properties = new HashMap<>();
         properties.put("test-property", 1L);
         spyCursor.markDelete(pos1, properties);
+        cursorMarkDeleteCompletedLatch.countDown();
 
-        expiryMarkDeleteCompletedLatch.await();
+        assertTrue(expiryMarkDeleteCompletedLatch.await(5, TimeUnit.SECONDS));
         assertEquals(spyCursor.getMarkDeletedPosition(), pos2);
         assertEquals(spyCursor.getProperties(), properties);
     }
