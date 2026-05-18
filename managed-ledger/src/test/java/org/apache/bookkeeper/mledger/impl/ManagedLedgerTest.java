@@ -5438,11 +5438,6 @@ public class ManagedLedgerTest extends MockedBookKeeperTestCase {
 
         doAnswer(invocation -> {
             Map<String, Long> invocationProperties = invocation.getArgument(1);
-
-            if (invocationProperties != null && invocationProperties.size() == 1) {
-                return invocation.callRealMethod();
-            }
-
             if (invocationProperties == null || invocationProperties.isEmpty()) {
                 advanceCursorsMarkDeleteEnteredLatch.countDown();
                 assertTrue(nonDurableCursorsMarkDeleteCompletedLatch.await(5, TimeUnit.SECONDS));
