@@ -5438,6 +5438,7 @@ public class ManagedLedgerTest extends MockedBookKeeperTestCase {
 
         doAnswer(invocation -> {
             Map<String, Long> invocationProperties = invocation.getArgument(1);
+            // Pause the advanceCursorsIfNecessary mark-delete so the nonDurableCursor markDelete() can complete first.
             if (invocationProperties == null || invocationProperties.isEmpty()) {
                 advanceCursorsMarkDeleteEnteredLatch.countDown();
                 assertTrue(nonDurableCursorsMarkDeleteCompletedLatch.await(5, TimeUnit.SECONDS));
