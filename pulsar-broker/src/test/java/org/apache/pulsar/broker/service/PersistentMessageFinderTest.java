@@ -1124,11 +1124,6 @@ public class PersistentMessageFinderTest extends MockedBookKeeperTestCase {
 
         doAnswer(invocation -> {
             Map<String, Long> invocationProperties = invocation.getArgument(1);
-
-            if (invocationProperties != null && invocationProperties.size() == 1) {
-                return invocation.callRealMethod();
-            }
-
             // Pause the expiry-triggered mark-delete so the user markDelete() can complete first.
             if (invocationProperties == null || invocationProperties.isEmpty()) {
                 expiryMarkDeleteEnteredLatch.countDown();
