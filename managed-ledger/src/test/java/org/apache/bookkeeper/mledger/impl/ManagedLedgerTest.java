@@ -5432,24 +5432,20 @@ public class ManagedLedgerTest extends MockedBookKeeperTestCase {
         ledger.getCursors().removeCursor(realNonDurableCursor.getName());
         ledger.getCursors().add(nonDurableCursor, null);
 
+        CountDownLatch advanceCursorsMarkDeleteEnteredLatch = new CountDownLatch(1);
+        CountDownLatch nonDurableCursorsMarkDeleteCompletedLatch = new CountDownLatch(1);
         CountDownLatch advanceCursorsMarkDeleteCompletedLatch = new CountDownLatch(1);
-        CountDownLatch nonDurableCursorMarkDeleteCompletedLatch = new CountDownLatch(1);
 
         doAnswer(invocation -> {
             Map<String, Long> invocationProperties = invocation.getArgument(1);
 
-            // Let the user-triggered nonDurableCursor.markDelete() with properties complete first.
             if (invocationProperties != null && invocationProperties.size() == 1) {
-                try {
-                    return invocation.callRealMethod();
-                } finally {
-                    nonDurableCursorMarkDeleteCompletedLatch.countDown();
-                }
+                return invocation.callRealMethod();
             }
 
-            // Then let the trim-triggered advanceCursorsIfNecessary() mark-delete proceed.
             if (invocationProperties == null || invocationProperties.isEmpty()) {
-                nonDurableCursorMarkDeleteCompletedLatch.await();
+                advanceCursorsMarkDeleteEnteredLatch.countDown();
+                assertTrue(nonDurableCursorsMarkDeleteCompletedLatch.await(5, TimeUnit.SECONDS));
                 try {
                     return invocation.callRealMethod();
                 } finally {
@@ -5467,13 +5463,15 @@ public class ManagedLedgerTest extends MockedBookKeeperTestCase {
 
         // Mark-delete the durable cursor to trigger trimming, which advances non-durable cursors.
         durableCursor.markDelete(pos2);
+        assertTrue(advanceCursorsMarkDeleteEnteredLatch.await(5, TimeUnit.SECONDS));
 
         String propertyKey = "test-property";
         Map<String, Long> properties = new HashMap<>();
         properties.put(propertyKey, 1L);
         nonDurableCursor.markDelete(pos2, properties);
+        nonDurableCursorsMarkDeleteCompletedLatch.countDown();
 
-        advanceCursorsMarkDeleteCompletedLatch.await();
+        assertTrue(advanceCursorsMarkDeleteCompletedLatch.await(5, TimeUnit.SECONDS));
         assertEquals(nonDurableCursor.getMarkDeletedPosition(), pos2);
         assertEquals(nonDurableCursor.getProperties(), properties);
     }
