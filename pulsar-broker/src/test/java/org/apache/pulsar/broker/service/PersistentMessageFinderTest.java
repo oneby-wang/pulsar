@@ -1109,6 +1109,7 @@ public class PersistentMessageFinderTest extends MockedBookKeeperTestCase {
         final String ledgerAndCursorName = "testExpireMessagesNeverLoseMarkDeleteProperties";
 
         ManagedLedgerConfig config = new ManagedLedgerConfig();
+        config.setMaxEntriesPerLedger(1);
         config.setRetentionSizeInMB(10);
         config.setRetentionTime(1, TimeUnit.HOURS);
         ManagedLedgerImpl ledger = (ManagedLedgerImpl) factory.open(ledgerAndCursorName, config);
@@ -1144,7 +1145,9 @@ public class PersistentMessageFinderTest extends MockedBookKeeperTestCase {
         PersistentMessageExpiryMonitor monitor = new PersistentMessageExpiryMonitor(topic,
                 spyCursor.getName(), spyCursor, null);
 
-        CompletableFuture.runAsync(() -> monitor.findEntryComplete(pos2, null));
+        // Wait until the new ledger is created so ManagedLedgerInfo.LedgerInfo is updated in the metastore.
+        Awaitility.await().untilAsserted(() -> assertEquals(ledger.getLedgersInfo().size(), 3));
+        CompletableFuture.runAsync(() -> monitor.expireMessages(pos2));
         assertTrue(expiryMarkDeleteEnteredLatch.await(5, TimeUnit.SECONDS));
 
         Map<String, Long> properties = new HashMap<>();
