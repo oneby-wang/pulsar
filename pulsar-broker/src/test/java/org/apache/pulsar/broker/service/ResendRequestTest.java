@@ -39,6 +39,7 @@ import org.apache.pulsar.client.api.MessageId;
 import org.apache.pulsar.client.api.MessageRoutingMode;
 import org.apache.pulsar.client.api.Producer;
 import org.apache.pulsar.client.api.PulsarClient;
+import org.apache.pulsar.client.api.SubscriptionInitialPosition;
 import org.apache.pulsar.client.api.SubscriptionType;
 import org.apache.pulsar.client.impl.ConsumerBase;
 import org.apache.pulsar.common.util.collections.GrowableArrayBlockingQueue;
@@ -494,25 +495,27 @@ public class ResendRequestTest extends SharedPulsarBaseTest {
         // 1. producer connect
         @Cleanup
         Producer<byte[]> producer = pulsarClient.newProducer().topic(topicName)
-            .enableBatching(false)
-            .messageRoutingMode(MessageRoutingMode.RoundRobinPartition).create();
+                .enableBatching(false)
+                .messageRoutingMode(MessageRoutingMode.RoundRobinPartition).create();
 
-        // 2. Create consumer
-        @Cleanup
-        Consumer<byte[]> consumer1 = pulsarClient.newConsumer().topic(topicName).subscriptionName(subscriptionName)
-                .receiverQueueSize(7).subscriptionType(SubscriptionType.Shared).subscribe();
-
-        @Cleanup
-        PulsarClient newPulsarClient = newPulsarClient();
-        Consumer<byte[]> consumer2 = newPulsarClient.newConsumer().topic(topicName).subscriptionName(subscriptionName)
-                .receiverQueueSize(7).subscriptionType(SubscriptionType.Shared).subscribe();
-
-        // 3. producer publish messages
+        // 2. producer publish messages
         for (int i = 0; i < totalMessages; i++) {
             String message = messagePredicate + i;
             log.info().attr("message", message).log("Message produced");
             producer.send(message.getBytes());
         }
+
+        // 3. Create consumer
+        @Cleanup
+        Consumer<byte[]> consumer1 = pulsarClient.newConsumer().topic(topicName).subscriptionName(subscriptionName)
+                .receiverQueueSize(7).subscriptionType(SubscriptionType.Shared).subscriptionInitialPosition(
+                        SubscriptionInitialPosition.Earliest).subscribe();
+
+        @Cleanup
+        PulsarClient newPulsarClient = newPulsarClient();
+        Consumer<byte[]> consumer2 = newPulsarClient.newConsumer().topic(topicName).subscriptionName(subscriptionName)
+                .receiverQueueSize(7).subscriptionType(SubscriptionType.Shared).subscriptionInitialPosition(
+                        SubscriptionInitialPosition.Earliest).subscribe();
 
         // 4. Receive messages
         int messageCount1 = 0;
