@@ -508,13 +508,13 @@ public class ResendRequestTest extends SharedPulsarBaseTest {
         // 3. Create consumer
         @Cleanup
         Consumer<byte[]> consumer1 = pulsarClient.newConsumer().topic(topicName).subscriptionName(subscriptionName)
-                .receiverQueueSize(7).subscriptionType(SubscriptionType.Shared).subscriptionInitialPosition(
+                .receiverQueueSize(2).subscriptionType(SubscriptionType.Shared).subscriptionInitialPosition(
                         SubscriptionInitialPosition.Earliest).subscribe();
 
         @Cleanup
         PulsarClient newPulsarClient = newPulsarClient();
         Consumer<byte[]> consumer2 = newPulsarClient.newConsumer().topic(topicName).subscriptionName(subscriptionName)
-                .receiverQueueSize(7).subscriptionType(SubscriptionType.Shared).subscriptionInitialPosition(
+                .receiverQueueSize(2).subscriptionType(SubscriptionType.Shared).subscriptionInitialPosition(
                         SubscriptionInitialPosition.Earliest).subscribe();
 
         // 4. Receive messages
