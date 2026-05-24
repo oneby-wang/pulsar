@@ -19,10 +19,13 @@
 
 package org.apache.pulsar.client.api;
 
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
 import lombok.Cleanup;
 import org.apache.pulsar.client.admin.PulsarAdminException;
 import org.apache.pulsar.client.api.PulsarClientException.NotAllowedException;
+import org.apache.pulsar.client.impl.ConsumerImpl;
 import org.apache.pulsar.common.naming.TopicDomain;
 import org.apache.pulsar.common.naming.TopicName;
 import org.testng.annotations.AfterMethod;
@@ -52,6 +55,62 @@ public class ConsumerCreationTest extends ProducerConsumerBase {
                 {TopicDomain.persistent},
                 {TopicDomain.non_persistent}
         };
+    }
+
+    @Test
+    public void testHasMessageAvailableBeforeReceiveOnSubscribedConsumer() throws Exception {
+        String topic = newTopicName();
+
+        @Cleanup
+        ConsumerImpl<byte[]> consumer = (ConsumerImpl<byte[]>) pulsarClient.newConsumer()
+                .topic(topic)
+                .subscriptionName("sub")
+                .subscriptionType(SubscriptionType.Exclusive)
+                .subscribe();
+
+        assertFalse(consumer.hasMessageAvailable());
+    }
+
+    @Test
+    public void testHasMessageAvailableBeforeReceiveWithEarliestInitialPosition() throws Exception {
+        String topic = newTopicName();
+
+        @Cleanup
+        Producer<byte[]> producer = pulsarClient.newProducer()
+                .topic(topic)
+                .create();
+        producer.send(new byte[] {1});
+
+        @Cleanup
+        ConsumerImpl<byte[]> consumer = (ConsumerImpl<byte[]>) pulsarClient.newConsumer()
+                .topic(topic)
+                .subscriptionName("sub")
+                .subscriptionType(SubscriptionType.Exclusive)
+                .subscriptionInitialPosition(SubscriptionInitialPosition.Earliest)
+                .subscribe();
+
+        assertTrue(consumer.hasMessageAvailable());
+    }
+
+    @Test
+    public void testHasMessageAvailableBeforeReceiveWithLatestInitialPosition() throws Exception {
+        String topic = newTopicName();
+
+        @Cleanup
+        Producer<byte[]> producer = pulsarClient.newProducer()
+                .topic(topic)
+                .create();
+        producer.send(new byte[] {1});
+
+        @Cleanup
+        ConsumerImpl<byte[]> consumer = (ConsumerImpl<byte[]>) pulsarClient.newConsumer()
+                .topic(topic)
+                .subscriptionName("sub")
+                .subscriptionType(SubscriptionType.Exclusive)
+                .subscriptionInitialPosition(SubscriptionInitialPosition.Latest)
+                .subscribe();
+
+        assertFalse(consumer.hasMessageAvailable());
     }
 
     @Test(dataProvider = "topicDomainProvider")
