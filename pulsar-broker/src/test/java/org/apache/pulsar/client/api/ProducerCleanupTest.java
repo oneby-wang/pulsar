@@ -36,7 +36,7 @@ public class ProducerCleanupTest extends SharedPulsarBaseTest {
         PulsarClient client = newPulsarClient();
         Producer<byte[]> producer = client.newProducer()
                 .topic(newTopicName())
-                .sendTimeout(1, TimeUnit.SECONDS)
+                .sendTimeout(15, TimeUnit.SECONDS)
                 .create();
         producer.close();
         HashedWheelTimer timer = (HashedWheelTimer) ((PulsarClientImpl) client).timer();
