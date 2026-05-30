@@ -65,7 +65,10 @@ public class SameAuthParamsLookupAutoClusterFailover implements ServiceUrlProvid
     private SameAuthParamsLookupAutoClusterFailover() {}
 
     @Override
-    public void initialize(PulsarClient client) {
+    public synchronized void initialize(PulsarClient client) {
+        if (this.pulsarClient != null) {
+            throw new IllegalStateException("ServiceUrlProvider has already been initialized");
+        }
         this.currentPulsarServiceIndex = 0;
         this.pulsarClient = (PulsarClientImpl) client;
         this.executor = EventLoopUtil.newEventLoopGroup(1, false,
@@ -377,4 +380,3 @@ public class SameAuthParamsLookupAutoClusterFailover implements ServiceUrlProvid
         }
     }
 }
-

@@ -86,7 +86,10 @@ public class AutoClusterFailover implements ServiceUrlProvider {
     }
 
     @Override
-    public void initialize(PulsarClient client) {
+    public synchronized void initialize(PulsarClient client) {
+        if (this.pulsarClient != null) {
+            throw new IllegalStateException("ServiceUrlProvider has already been initialized");
+        }
         this.pulsarClient = (PulsarClientImpl) client;
         this.addressResolver = pulsarClient.getAddressResolver();
         ClientConfigurationData config = pulsarClient.getConfiguration();
