@@ -187,7 +187,7 @@ public class ZKSessionTest extends BaseMetadataStoreTest {
         assertFalse(lock.getLockExpiredFuture().isDone());
     }
 
-    @Test
+    @Test(invocationCount = 100)
     public void testReacquireLeadershipAfterSessionLost() throws Exception {
         //  ---  init
         @Cleanup

@@ -134,6 +134,12 @@ public class PulsarZooKeeperClient extends ZooKeeper implements Watcher, AutoClo
                             throw KeeperException.create(KeeperException.Code.CONNECTIONLOSS);
                         }
                         waitForConnection();
+                        try {
+                            Thread.sleep(10);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw e;
+                        }
                         zk.set(newZk);
                         log.info()
                                 .attr("sessionId", Long.toHexString(newZk.getSessionId()))
