@@ -27,6 +27,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -121,10 +122,36 @@ public class PulsarZooKeeperClient extends ZooKeeper implements Watcher, AutoClo
                     public ZooKeeper call() throws KeeperException, InterruptedException {
                         log.info().attr("connectString", connectString).log("Reconnecting zookeeper");
                         // close the previous one
+                        ZooKeeper previousZk = zk.get();
                         closeZkHandle();
+                        AtomicReference<ZooKeeper> newZkRef = new AtomicReference<>();
+                        CountDownLatch newZkCreated = new CountDownLatch(1);
+                        Watcher publishingWatcher = event -> {
+                            ZooKeeper newZk = newZkRef.get();
+                            if (newZk == null) {
+                                try {
+                                    if (!newZkCreated.await(sessionTimeoutMs, TimeUnit.MILLISECONDS)) {
+                                        log.warn().attr("event", event)
+                                                .log("Failed to publish ZooKeeper handle before processing event");
+                                        return;
+                                    }
+                                    newZk = newZkRef.get();
+                                } catch (InterruptedException e) {
+                                    Thread.currentThread().interrupt();
+                                    return;
+                                }
+                            }
+
+                            if (newZk != null) {
+                                zk.compareAndSet(previousZk, newZk);
+                                if (zk.get() == newZk) {
+                                    watcherManager.process(event);
+                                }
+                            }
+                        };
                         ZooKeeper newZk;
                         try {
-                            newZk = createZooKeeper();
+                            newZk = createZooKeeper(publishingWatcher);
                         } catch (IOException | QuorumPeerConfig.ConfigException e) {
                             log.error()
                                     .attr("connectString", connectString)
@@ -133,14 +160,9 @@ public class PulsarZooKeeperClient extends ZooKeeper implements Watcher, AutoClo
                                     .log("Failed to create zookeeper instance");
                             throw KeeperException.create(KeeperException.Code.CONNECTIONLOSS);
                         }
+                        newZkRef.set(newZk);
+                        newZkCreated.countDown();
                         waitForConnection();
-                        try {
-                            Thread.sleep(10);
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                            throw e;
-                        }
-                        zk.set(newZk);
                         log.info()
                                 .attr("sessionId", Long.toHexString(newZk.getSessionId()))
                                 .attr("connectString", connectString)
@@ -370,11 +392,16 @@ public class PulsarZooKeeperClient extends ZooKeeper implements Watcher, AutoClo
 
     @SuppressWarnings("deprecation")
     protected ZooKeeper createZooKeeper() throws IOException, QuorumPeerConfig.ConfigException {
+        return createZooKeeper(watcherManager);
+    }
+
+    @SuppressWarnings("deprecation")
+    protected ZooKeeper createZooKeeper(Watcher watcher) throws IOException, QuorumPeerConfig.ConfigException {
         if (null != configPath) {
-            return new ZooKeeper(connectString, sessionTimeoutMs, watcherManager, allowReadOnlyMode,
+            return new ZooKeeper(connectString, sessionTimeoutMs, watcher, allowReadOnlyMode,
                     new ZKClientConfig(configPath));
         }
-        return new ZooKeeper(connectString, sessionTimeoutMs, watcherManager, allowReadOnlyMode);
+        return new ZooKeeper(connectString, sessionTimeoutMs, watcher, allowReadOnlyMode);
     }
 
     @Override
