@@ -136,7 +136,6 @@ public class PulsarZooKeeperClient extends ZooKeeper implements Watcher, AutoClo
                                     log.warn().attr("event", event)
                                             .log("Timed out waiting for ZooKeeper instance to be published before "
                                                     + "forwarding event");
-                                    return;
                                 }
                             } catch (InterruptedException e) {
                                 Thread.currentThread().interrupt();
