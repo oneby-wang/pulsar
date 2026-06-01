@@ -160,13 +160,6 @@ public class PulsarZooKeeperClient extends ZooKeeper implements Watcher, AutoClo
                             throw KeeperException.create(KeeperException.Code.CONNECTIONLOSS);
                         }
 
-                        try {
-                            Thread.sleep(10);
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                            throw e;
-                        }
-
                         // Publish the new instance before releasing the forwarding watcher. waitForConnection() must
                         // happen after countDown(), since it depends on the forwarded SyncConnected event.
                         zk.set(newZk);
