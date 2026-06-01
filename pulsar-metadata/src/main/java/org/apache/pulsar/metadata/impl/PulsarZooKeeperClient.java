@@ -124,9 +124,10 @@ public class PulsarZooKeeperClient extends ZooKeeper implements Watcher, AutoClo
                         // close the previous one
                         closeZkHandle();
 
-                        // ZooKeeper can deliver SyncConnected while createZooKeeper() is still constructing the
-                        // client. Hold these events until the new instance is published, so child watchers never
-                        // observe a new-session event while PulsarZooKeeperClient still points at the old handle.
+                        // ZooKeeper can deliver SyncConnected after createZooKeeper() returns but before zk.set(newZk)
+                        // publishes the new instance. Hold these events until the new instance is published, so child
+                        // watchers never observe a new-session event while PulsarZooKeeperClient still points at the
+                        // old handle.
                         CountDownLatch newZkSetLatch = new CountDownLatch(1);
                         Watcher forwardEventsWatcher = event -> {
                             try {
