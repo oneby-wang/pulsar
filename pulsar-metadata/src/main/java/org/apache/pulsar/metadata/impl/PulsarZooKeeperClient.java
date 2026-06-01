@@ -122,36 +122,35 @@ public class PulsarZooKeeperClient extends ZooKeeper implements Watcher, AutoClo
                     public ZooKeeper call() throws KeeperException, InterruptedException {
                         log.info().attr("connectString", connectString).log("Reconnecting zookeeper");
                         // close the previous one
-                        ZooKeeper previousZk = zk.get();
                         closeZkHandle();
-                        AtomicReference<ZooKeeper> newZkRef = new AtomicReference<>();
-                        CountDownLatch newZkCreated = new CountDownLatch(1);
-                        Watcher publishingWatcher = event -> {
-                            ZooKeeper newZk = newZkRef.get();
-                            if (newZk == null) {
-                                try {
-                                    if (!newZkCreated.await(sessionTimeoutMs, TimeUnit.MILLISECONDS)) {
-                                        log.warn().attr("event", event)
-                                                .log("Failed to publish ZooKeeper handle before processing event");
-                                        return;
-                                    }
-                                    newZk = newZkRef.get();
-                                } catch (InterruptedException e) {
-                                    Thread.currentThread().interrupt();
+
+                        // ZooKeeper can deliver SyncConnected while createZooKeeper() is still constructing the
+                        // client. Hold these events until the new instance is published, so child watchers never
+                        // observe a new-session event while PulsarZooKeeperClient still points at the old handle.
+                        CountDownLatch newZkSetLatch = new CountDownLatch(1);
+                        Watcher forwardEventsWatcher = event -> {
+                            try {
+                                boolean awaited = newZkSetLatch.await(sessionTimeoutMs, TimeUnit.MILLISECONDS);
+                                if (!awaited) {
+                                    log.warn().attr("event", event)
+                                            .log("Timed out waiting for ZooKeeper instance to be published before "
+                                                    + "forwarding event");
                                     return;
                                 }
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                                log.warn()
+                                        .attr("event", event)
+                                        .exception(e)
+                                        .log("Interrupted while waiting for ZooKeeper instance to be published");
+                                return;
                             }
-
-                            if (newZk != null) {
-                                zk.compareAndSet(previousZk, newZk);
-                                if (zk.get() == newZk) {
-                                    watcherManager.process(event);
-                                }
-                            }
+                            watcherManager.process(event);
                         };
+
                         ZooKeeper newZk;
                         try {
-                            newZk = createZooKeeper(publishingWatcher);
+                            newZk = createZooKeeper(forwardEventsWatcher);
                         } catch (IOException | QuorumPeerConfig.ConfigException e) {
                             log.error()
                                     .attr("connectString", connectString)
@@ -160,8 +159,18 @@ public class PulsarZooKeeperClient extends ZooKeeper implements Watcher, AutoClo
                                     .log("Failed to create zookeeper instance");
                             throw KeeperException.create(KeeperException.Code.CONNECTIONLOSS);
                         }
-                        newZkRef.set(newZk);
-                        newZkCreated.countDown();
+
+                        try {
+                            Thread.sleep(10);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw e;
+                        }
+
+                        // Publish the new instance before releasing the forwarding watcher. waitForConnection() must
+                        // happen after countDown(), since it depends on the forwarded SyncConnected event.
+                        zk.set(newZk);
+                        newZkSetLatch.countDown();
                         waitForConnection();
                         log.info()
                                 .attr("sessionId", Long.toHexString(newZk.getSessionId()))
@@ -388,11 +397,6 @@ public class PulsarZooKeeperClient extends ZooKeeper implements Watcher, AutoClo
 
     public void waitForConnection() throws KeeperException, InterruptedException {
         watcherManager.waitForConnection();
-    }
-
-    @SuppressWarnings("deprecation")
-    protected ZooKeeper createZooKeeper() throws IOException, QuorumPeerConfig.ConfigException {
-        return createZooKeeper(watcherManager);
     }
 
     @SuppressWarnings("deprecation")

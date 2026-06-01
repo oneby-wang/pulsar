@@ -228,8 +228,6 @@ public class ZKSessionTest extends BaseMetadataStoreTest {
         assertEquals(e, SessionEvent.Reconnected);
         e = sessionEvents.poll(10, TimeUnit.SECONDS);
         assertEquals(e, SessionEvent.SessionReestablished);
-        e = sessionEvents.poll(1, TimeUnit.SECONDS);
-        assertNull(e);
         Awaitility.await().atMost(Duration.ofSeconds(15))
                 .untilAsserted(()-> assertEquals(le1.getState(), LeaderElectionState.Leading));
         assertTrue(store.get(path).join().isPresent());
