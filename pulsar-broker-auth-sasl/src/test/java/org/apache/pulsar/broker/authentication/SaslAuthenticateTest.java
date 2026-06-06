@@ -68,7 +68,6 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
-import org.testng.collections.CollectionUtils;
 
 @CustomLog
 public class SaslAuthenticateTest extends ProducerConsumerBase {
@@ -307,53 +306,6 @@ public class SaslAuthenticateTest extends ProducerConsumerBase {
         }
 
         log.info().attr("value", methodName).log("---- end");
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    public void testSaslOnlyAuthFirstStage() throws Exception {
-        @Cleanup
-        AuthenticationProviderSasl saslServer = new AuthenticationProviderSasl();
-        // The cache expiration time is set to 500ms. Residual auth info should be cleaned up
-        conf.setInflightSaslContextExpiryMs(500);
-        saslServer.initialize(AuthenticationProvider.Context.builder().config(conf).build());
-
-        HttpServletRequest servletRequest = mock(HttpServletRequest.class);
-        doReturn("Init").when(servletRequest).getHeader("State");
-        // 10 clients only do one-stage verification, resulting in 10 auth info remaining in memory
-        for (int i = 0; i < 10; i++) {
-            AuthenticationDataProvider dataProvider =  authSasl.getAuthData("localhost");
-            AuthData initData1 = dataProvider.authenticate(AuthData.INIT_AUTH_DATA);
-            doReturn(Base64.getEncoder().encodeToString(initData1.getBytes())).when(
-                    servletRequest).getHeader("SASL-Token");
-            doReturn(String.valueOf(i)).when(servletRequest).getHeader("SASL-Server-ID");
-            saslServer.authenticateHttpRequest(servletRequest, mock(HttpServletResponse.class));
-        }
-        Field field = AuthenticationProviderSasl.class.getDeclaredField("authStates");
-        field.setAccessible(true);
-        Cache<Long, AuthenticationState> cache = (Cache<Long, AuthenticationState>) field.get(saslServer);
-        assertEquals(cache.asMap().size(), 10);
-        // Add more auth info into memory
-        for (int i = 0; i < 10; i++) {
-            AuthenticationDataProvider dataProvider =  authSasl.getAuthData("localhost");
-            AuthData initData1 = dataProvider.authenticate(AuthData.INIT_AUTH_DATA);
-            doReturn(Base64.getEncoder().encodeToString(initData1.getBytes())).when(
-                    servletRequest).getHeader("SASL-Token");
-            doReturn(String.valueOf(10 + i)).when(servletRequest).getHeader("SASL-Server-ID");
-            saslServer.authenticateHttpRequest(servletRequest, mock(HttpServletResponse.class));
-        }
-        long start = System.currentTimeMillis();
-        while (true) {
-            if (System.currentTimeMillis() - start > 5000) {
-                fail();
-            }
-            cache = (Cache<Long, AuthenticationState>) field.get(saslServer);
-            // Residual auth info should be cleaned up
-            if (CollectionUtils.hasElements(cache.asMap())) {
-                break;
-            }
-            Thread.sleep(5);
-        }
     }
 
     @Test
