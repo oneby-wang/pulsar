@@ -364,7 +364,7 @@ public class SaslAuthenticateTest extends ProducerConsumerBase {
         @Cleanup
         AuthenticationProviderSasl saslServer = new AuthenticationProviderSasl();
         HttpServletRequest servletRequest = mock(HttpServletRequest.class);
-        doReturn("Init").when(servletRequest).getHeader("State");
+        doReturn(SaslConstants.SASL_STATE_CLIENT_INIT).when(servletRequest).getHeader(SaslConstants.SASL_HEADER_STATE);
         conf.setInflightSaslContextExpiryMs(Integer.MAX_VALUE);
         conf.setMaxInflightSaslContext(1);
         saslServer.initialize(AuthenticationProvider.Context.builder().config(conf).build());
@@ -373,8 +373,8 @@ public class SaslAuthenticateTest extends ProducerConsumerBase {
             AuthenticationDataProvider dataProvider =  authSasl.getAuthData("localhost");
             AuthData initData1 = dataProvider.authenticate(AuthData.INIT_AUTH_DATA);
             doReturn(Base64.getEncoder().encodeToString(initData1.getBytes())).when(
-                    servletRequest).getHeader("SASL-Token");
-            doReturn(String.valueOf(i)).when(servletRequest).getHeader("SASL-Server-ID");
+                    servletRequest).getHeader(SaslConstants.SASL_AUTH_TOKEN);
+            doReturn(String.valueOf(i)).when(servletRequest).getHeader(SaslConstants.SASL_STATE_SERVER);
             saslServer.authenticateHttpRequest(servletRequest, mock(HttpServletResponse.class));
         }
         Cache<Long, AuthenticationState> cache = saslServer.getAuthStates();
@@ -389,7 +389,7 @@ public class SaslAuthenticateTest extends ProducerConsumerBase {
         @Cleanup
         AuthenticationProviderSasl saslServer = new AuthenticationProviderSasl();
         HttpServletRequest servletRequest = mock(HttpServletRequest.class);
-        doReturn("Init").when(servletRequest).getHeader("State");
+        doReturn(SaslConstants.SASL_STATE_CLIENT_INIT).when(servletRequest).getHeader(SaslConstants.SASL_HEADER_STATE);
         conf.setInflightSaslContextExpiryMs(Integer.MAX_VALUE);
         conf.setMaxInflightSaslContext(1);
         saslServer.initialize(AuthenticationProvider.Context.builder().config(conf).build());
@@ -418,8 +418,8 @@ public class SaslAuthenticateTest extends ProducerConsumerBase {
                 AuthenticationDataProvider dataProvider = authSasl.getAuthData("localhost");
                 AuthData initData1 = dataProvider.authenticate(AuthData.INIT_AUTH_DATA);
                 doReturn(Base64.getEncoder().encodeToString(initData1.getBytes())).when(
-                        servletRequest).getHeader("SASL-Token");
-                doReturn(String.valueOf(i)).when(servletRequest).getHeader("SASL-Server-ID");
+                        servletRequest).getHeader(SaslConstants.SASL_AUTH_TOKEN);
+                doReturn(String.valueOf(i)).when(servletRequest).getHeader(SaslConstants.SASL_STATE_SERVER);
                 saslServer.authenticateHttpRequest(servletRequest, mock(HttpServletResponse.class));
             }
             assertTrue(maintenanceStarted.await(5, TimeUnit.SECONDS));
