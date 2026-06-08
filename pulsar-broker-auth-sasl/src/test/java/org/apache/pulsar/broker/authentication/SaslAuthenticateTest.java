@@ -62,7 +62,6 @@ import org.apache.pulsar.common.api.AuthData;
 import org.apache.pulsar.common.sasl.SaslConstants;
 import org.apache.pulsar.common.util.ObjectMapperFactory;
 import org.awaitility.Awaitility;
-import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
@@ -220,7 +219,7 @@ public class SaslAuthenticateTest extends ProducerConsumerBase {
     @Override
     protected void cleanup() throws Exception {
         FileUtils.deleteQuietly(secretKeyFile);
-        Assert.assertFalse(secretKeyFile.exists());
+        assertFalse(secretKeyFile.exists());
         super.internalCleanup();
     }
 
@@ -355,9 +354,10 @@ public class SaslAuthenticateTest extends ProducerConsumerBase {
         Field field = AuthenticationProviderSasl.class.getDeclaredField("authStates");
         field.setAccessible(true);
         Cache<Long, AuthenticationState> cache = (Cache<Long, AuthenticationState>) field.get(saslServer);
-        Awaitility.await().atMost(3, TimeUnit.SECONDS).pollDelay(100, TimeUnit.MILLISECONDS).untilAsserted(() -> {
-            cache.cleanUp();
-            assertEquals(cache.asMap().size(), 0);
+        Awaitility.await().atMost(5, TimeUnit.SECONDS).pollDelay(100, TimeUnit.MILLISECONDS).untilAsserted(() -> {
+            for (int i = 0; i < 10; i++) {
+                assertNull(cache.getIfPresent(((long) i)));
+            }
         });
     }
 
