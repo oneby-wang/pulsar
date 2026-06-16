@@ -2743,10 +2743,11 @@ public class ConsumerImpl<T> extends ConsumerBase<T> implements ConnectionHandle
             // if we are starting from latest, we should seek to the actual last message first.
             // allow the last one to be read when read head inclusively.
             final boolean hasSoughtByTimestamp = this.hasSoughtByTimestamp;
-            if (MessageId.latest.equals(startMessageId) || hasSoughtByTimestamp) {
+            final boolean startFromLatest = MessageId.latest.equals(startMessageId);
+            if (startFromLatest || hasSoughtByTimestamp || startMessageId == null) {
                 CompletableFuture<GetLastMessageIdResponse> future = internalGetLastMessageIdAsync();
                 // if the consumer is configured to read inclusive then we need to seek to the last message
-                if (resetIncludeHead && !hasSoughtByTimestamp) {
+                if (resetIncludeHead && startFromLatest) {
                     future = future.thenCompose((lastMessageIdResponse) ->
                             seekAsync(lastMessageIdResponse.lastMessageId)
                                     .thenApply((ignore) -> lastMessageIdResponse));
