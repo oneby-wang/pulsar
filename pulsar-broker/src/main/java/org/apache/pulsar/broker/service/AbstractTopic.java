@@ -480,11 +480,7 @@ public abstract class AbstractTopic implements Topic, TopicPolicyListener {
 
     private void updateTopicPolicyByBrokerConfig() {
         ServiceConfiguration config = brokerService.pulsar().getConfiguration();
-        topicPolicies.getInactiveTopicPolicies().updateBrokerValue(new InactiveTopicPolicies(
-                config.getBrokerDeleteInactiveTopicsMode(),
-                config.getBrokerDeleteInactiveTopicsMaxInactiveDurationSeconds(),
-                config.isBrokerDeleteInactiveTopicsEnabled()));
-
+        updateBrokerInactiveTopicPolicies();
         updateBrokerSubscriptionTypesEnabled();
         topicPolicies.getMaxSubscriptionsPerTopic().updateBrokerValue(config.getMaxSubscriptionsPerTopic());
         topicPolicies.getMaxProducersPerTopic().updateBrokerValue(config.getMaxProducersPerTopic());
@@ -1386,6 +1382,10 @@ public abstract class AbstractTopic implements Topic, TopicPolicyListener {
         return topicPolicies.getInactiveTopicPolicies().get().isDeleteWhileInactive();
     }
 
+    public boolean isCloseWhileInactive() {
+        return brokerService.pulsar().getConfiguration().isBrokerCloseInactiveTopicsEnabled();
+    }
+
     public boolean deletePartitionedTopicMetadataWhileInactive() {
         return brokerService.pulsar().getConfiguration().isBrokerDeleteInactivePartitionedTopicMetadataEnabled();
     }
@@ -1442,6 +1442,15 @@ public abstract class AbstractTopic implements Topic, TopicPolicyListener {
             log.debug("Disabling publish throttling");
         }
         this.topicPublishRateLimiter.update(publishRate);
+    }
+
+    // brokerDeleteInactiveTopicsEnabled is dynamic and can be updated online.
+    public void updateBrokerInactiveTopicPolicies() {
+        ServiceConfiguration config = brokerService.pulsar().getConfiguration();
+        topicPolicies.getInactiveTopicPolicies().updateBrokerValue(new InactiveTopicPolicies(
+                config.getBrokerDeleteInactiveTopicsMode(),
+                config.getBrokerDeleteInactiveTopicsMaxInactiveDurationSeconds(),
+                config.isBrokerDeleteInactiveTopicsEnabled()));
     }
 
     // subscriptionTypesEnabled is dynamic and can be updated online.
