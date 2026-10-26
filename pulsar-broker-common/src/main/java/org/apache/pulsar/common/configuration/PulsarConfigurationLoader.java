@@ -27,10 +27,13 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.TreeMap;
 import lombok.CustomLog;
 import org.apache.commons.lang3.StringUtils;
@@ -189,37 +192,14 @@ public class PulsarConfigurationLoader {
                         .attr("field", field.getName())
                         .attr("value", value)
                         .log("Validating configuration field");
-                boolean isRequired = field.getAnnotation(FieldContext.class).required();
-                long minValue = field.getAnnotation(FieldContext.class).minValue();
-                long maxValue = field.getAnnotation(FieldContext.class).maxValue();
-                if (isRequired && isEmpty(value)) {
-                    error.append(String.format("Required %s is null,", field.getName()));
-                }
-
-                if (value != null && Number.class.isAssignableFrom(value.getClass())) {
-                    long fieldVal = ((Number) value).longValue();
-                    boolean valid = fieldVal >= minValue && fieldVal <= maxValue;
-                    if (!valid) {
-                        error.append(String.format("%s value %d doesn't fit in given range (%d, %d),", field.getName(),
-                                fieldVal, minValue, maxValue));
-                    }
-                }
+                Optional<String> validationError = FieldContextValidator.validateParsedValue(field, value);
+                validationError.ifPresent(err -> error.append(err).append(","));
             }
         }
         if (error.length() > 0) {
             throw new IllegalArgumentException(error.substring(0, error.length() - 1));
         }
         return true;
-    }
-
-    private static boolean isEmpty(Object obj) {
-        if (obj == null) {
-            return true;
-        } else if (obj instanceof String) {
-            return StringUtils.isBlank((String) obj);
-        } else {
-            return false;
-        }
     }
 
     /**
@@ -291,6 +271,7 @@ public class PulsarConfigurationLoader {
         try {
             PulsarConfiguration defaults = conf.getClass().getDeclaredConstructor().newInstance();
             Map<String, Object> overrides = new TreeMap<>();
+            Set<String> declaredFields = new HashSet<>();
             for (Field field : conf.getClass().getDeclaredFields()) {
                 if (Modifier.isStatic(field.getModifiers())) {
                     continue;
@@ -298,6 +279,7 @@ public class PulsarConfigurationLoader {
                 if (field.getDeclaredAnnotation(FieldContext.class) == null) {
                     continue;
                 }
+                declaredFields.add(field.getName());
                 field.setAccessible(true);
                 Object current = field.get(conf);
                 Object def = field.get(defaults);
@@ -308,7 +290,12 @@ public class PulsarConfigurationLoader {
             Properties props = conf.getProperties();
             if (props != null) {
                 for (String key : props.stringPropertyNames()) {
-                    overrides.putIfAbsent(key, props.getProperty(key));
+                    // Keys backed by a declared field were already compared against their defaults above;
+                    // the properties file typically lists every setting, so re-adding them here would
+                    // print the whole configuration.
+                    if (!declaredFields.contains(key)) {
+                        overrides.put(key, props.getProperty(key));
+                    }
                 }
             }
             return overrides;

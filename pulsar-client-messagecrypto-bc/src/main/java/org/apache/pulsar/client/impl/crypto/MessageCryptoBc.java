@@ -124,10 +124,33 @@ public class MessageCryptoBc implements MessageCrypto<MessageMetadata, MessageMe
     private static final SecureRandom secureRandom;
     static {
         SecureRandom rand;
-        try {
-            rand = SecureRandom.getInstance("NativePRNGNonBlocking");
-        } catch (NoSuchAlgorithmException nsa) {
-            rand = new SecureRandom();
+        Provider bcfips = Security.getProvider("BCFIPS");
+        if (bcfips != null) {
+            // When the BC-FIPS provider is registered, source randomness from its SP 800-90A
+            // DRBG so data-key and IV generation stays within the FIPS-validated module.
+            // Only registered providers are consulted here to avoid triggering BouncyCastle
+            // classpath resolution during class loading (see BcProviderHolder above).
+            try {
+                rand = SecureRandom.getInstance("DEFAULT", bcfips);
+            } catch (NoSuchAlgorithmException nsa) {
+                // Deliberately fatal rather than falling back: new SecureRandom() resolves by provider
+                // search order and may land outside the validated module, which is exactly what this
+                // branch exists to prevent. Registering BCFIPS is an operator asking for FIPS-approved
+                // randomness, and a data key or GCM IV drawn from anywhere else leaves no trace at run
+                // time -- SP 800-38D only permits a random 96-bit GCM IV from an approved DRBG. Failing
+                // class initialization surfaces the misconfiguration at the point it can still be fixed.
+                throw new IllegalStateException("The BCFIPS provider is registered but its DEFAULT SP "
+                        + "800-90A DRBG could not be obtained; refusing to fall back to a non-FIPS "
+                        + "SecureRandom for data-key and IV generation.", nsa);
+            }
+        } else {
+            try {
+                rand = SecureRandom.getInstance("NativePRNGNonBlocking");
+            } catch (NoSuchAlgorithmException nsa) {
+                // Unchanged: on a JVM without NativePRNGNonBlocking the platform default is the
+                // long-standing behaviour, and no FIPS guarantee was being claimed on this path.
+                rand = new SecureRandom();
+            }
         }
         secureRandom = rand;
 
@@ -359,7 +382,7 @@ public class MessageCryptoBc implements MessageCrypto<MessageMetadata, MessageMe
             pubKey = loadPublicKey(keyInfo.getKey());
         } catch (Exception e) {
             String msg = logCtx + "Failed to load public key " + keyName + ". " + e.getMessage();
-            log.error(msg);
+            log.error().exception(e).log(msg);
             throw new PulsarClientException.CryptoException(msg);
         }
 
@@ -387,7 +410,7 @@ public class MessageCryptoBc implements MessageCrypto<MessageMetadata, MessageMe
         } catch (IllegalBlockSizeException | BadPaddingException | NoSuchAlgorithmException
                  | NoSuchPaddingException | InvalidKeyException | InvalidAlgorithmParameterException e) {
             log.error().attr("logCtx", logCtx).attr("keyName", keyName)
-                    .exceptionMessage(e).log("Failed to encrypt data key");
+                    .exception(e).log("Failed to encrypt data key");
             throw new PulsarClientException.CryptoException(e.getMessage());
         }
         EncryptionKeyInfo eki = new EncryptionKeyInfo(encryptedKey, keyInfo.getMetadata());
@@ -521,7 +544,7 @@ public class MessageCryptoBc implements MessageCrypto<MessageMetadata, MessageMe
             }
         } catch (Exception e) {
             log.error().attr("logCtx", logCtx).attr("keyName", keyName)
-                    .exceptionMessage(e).log("Failed to decrypt data key to decrypt messages");
+                    .exception(e).log("Failed to decrypt data key to decrypt messages");
             return null;
         }
 
@@ -550,7 +573,7 @@ public class MessageCryptoBc implements MessageCrypto<MessageMetadata, MessageMe
 
         } catch (Exception e) {
             log.error().attr("logCtx", logCtx).attr("keyName", keyName)
-                    .exceptionMessage(e).log("Failed to decrypt data key to decrypt messages");
+                    .exception(e).log("Failed to decrypt data key to decrypt messages");
             return null;
         }
     }
