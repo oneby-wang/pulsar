@@ -19,6 +19,7 @@
 package org.apache.pulsar.broker.transaction.coordinator;
 
 import static org.apache.pulsar.broker.BrokerTestUtil.spyWithClassAndConstructorArgs;
+import io.prometheus.client.CollectorRegistry;
 import java.util.Optional;
 import lombok.CustomLog;
 import org.apache.pulsar.PulsarTransactionCoordinatorMetadataSetup;
@@ -75,7 +76,7 @@ public abstract class TransactionMetaStoreTestBase extends TestRetrySupport {
             config.setTransactionCoordinatorEnabled(true);
             configurations[i] = config;
 
-            pulsarServices[i] = spyWithClassAndConstructorArgs(PulsarService.class, config);
+            pulsarServices[i] = spyWithClassAndConstructorArgs(TestPulsarService.class, config);
             pulsarServices[i].start();
 
             pulsarAdmins[i] = PulsarAdmin.builder()
@@ -141,5 +142,19 @@ public abstract class TransactionMetaStoreTestBase extends TestRetrySupport {
             bkEnsemble = null;
         }
         Mockito.reset();
+    }
+
+    /** Pulsar service with an independent metrics registry for each test broker. */
+    public static class TestPulsarService extends PulsarService {
+        private final CollectorRegistry collectorRegistry = new CollectorRegistry();
+
+        public TestPulsarService(ServiceConfiguration config) {
+            super(config);
+        }
+
+        @Override
+        protected CollectorRegistry getPrometheusMetricsRegistry() {
+            return collectorRegistry;
+        }
     }
 }

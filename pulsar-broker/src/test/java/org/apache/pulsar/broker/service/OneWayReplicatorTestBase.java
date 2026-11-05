@@ -26,6 +26,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 import com.google.common.collect.Sets;
+import io.prometheus.client.CollectorRegistry;
 import java.lang.reflect.Field;
 import java.net.URI;
 import java.net.URL;
@@ -126,7 +127,7 @@ public abstract class OneWayReplicatorTestBase extends TestRetrySupport {
     protected void startBrokers() throws Exception {
         // Start brokers.
         setConfigDefaults(config1, cluster1, bkEnsemble1, brokerConfigZk1);
-        pulsar1 = new PulsarService(config1);
+        pulsar1 = buildPulsarService(config1);
         pulsar1.start();
         broker1 = pulsar1.getBrokerService();
         url1 = URI.create(pulsar1.getWebServiceAddress()).toURL();
@@ -134,7 +135,7 @@ public abstract class OneWayReplicatorTestBase extends TestRetrySupport {
 
         // Start region 2
         setConfigDefaults(config2, cluster2, bkEnsemble2, brokerConfigZk2);
-        pulsar2 = new PulsarService(config2);
+        pulsar2 = buildPulsarService(config2);
         pulsar2.start();
         broker2 = pulsar2.getBrokerService();
         url2 = URI.create(pulsar2.getWebServiceAddress()).toURL();
@@ -662,5 +663,16 @@ public abstract class OneWayReplicatorTestBase extends TestRetrySupport {
         waitReplicatorStarted(topic);
         return (GeoPersistentReplicator) pulsar1.getBrokerService().getTopic(topic, false).join().get()
                 .getReplicators().get(cluster2);
+    }
+
+    private PulsarService buildPulsarService(ServiceConfiguration config) {
+        return new PulsarService(config) {
+            private final CollectorRegistry collectorRegistry = new CollectorRegistry();
+
+            @Override
+            protected CollectorRegistry getPrometheusMetricsRegistry() {
+                return collectorRegistry;
+            }
+        };
     }
 }

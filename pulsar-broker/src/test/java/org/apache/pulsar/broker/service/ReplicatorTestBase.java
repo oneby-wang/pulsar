@@ -25,6 +25,7 @@ import com.google.common.collect.Sets;
 import com.google.common.io.Resources;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import io.prometheus.client.CollectorRegistry;
 import java.net.URI;
 import java.net.URL;
 import java.util.Optional;
@@ -329,7 +330,14 @@ public abstract class ReplicatorTestBase extends TestRetrySupport {
                 new WorkerConfig(),
                 Optional.empty(),
                 exitCode -> log.info().attr("exitCode", exitCode).log("Pulsar service finished"),
-                BrokerOpenTelemetryTestUtil.getOpenTelemetrySdkBuilderConsumer(metricReader));
+                BrokerOpenTelemetryTestUtil.getOpenTelemetrySdkBuilderConsumer(metricReader)) {
+            private final CollectorRegistry collectorRegistry = new CollectorRegistry();
+
+            @Override
+            protected CollectorRegistry getPrometheusMetricsRegistry() {
+                return collectorRegistry;
+            }
+        };
     }
 
     @SuppressWarnings("deprecation")
