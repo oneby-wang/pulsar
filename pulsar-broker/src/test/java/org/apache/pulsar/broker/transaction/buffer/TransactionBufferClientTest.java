@@ -18,8 +18,6 @@
  */
 package org.apache.pulsar.broker.transaction.buffer;
 
-import static org.apache.pulsar.broker.stats.prometheus.PrometheusMetricsClient.Metric;
-import static org.apache.pulsar.broker.stats.prometheus.PrometheusMetricsClient.parseMetrics;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -30,16 +28,15 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
-import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.util.HashedWheelTimer;
 import io.netty.util.concurrent.DefaultThreadFactory;
-import java.io.ByteArrayOutputStream;
+import io.prometheus.client.CollectorRegistry;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -49,7 +46,6 @@ import java.util.concurrent.TimeUnit;
 import lombok.Cleanup;
 import lombok.CustomLog;
 import org.apache.commons.lang3.tuple.Pair;
-import org.apache.pulsar.PrometheusMetricsTestUtil;
 import org.apache.pulsar.broker.BrokerTestUtil;
 import org.apache.pulsar.broker.PulsarServerException;
 import org.apache.pulsar.broker.PulsarService;
@@ -89,6 +85,7 @@ import org.testng.annotations.Test;
 public class TransactionBufferClientTest extends TransactionTestBase {
 
     private TransactionBufferClient tbClient;
+    private CollectorRegistry transactionBufferClientMetricsRegistry;
     TopicName partitionedTopicName = TopicName.get("persistent", "public", "test", "tb-client");
     int partitions = 10;
     private static final String namespace = "public/test";
@@ -106,8 +103,10 @@ public class TransactionBufferClientTest extends TransactionTestBase {
                 new TenantInfoImpl(Sets.newHashSet("appid1"), Sets.newHashSet(CLUSTER_NAME)));
         admin.namespaces().createNamespace(namespace, 10);
         admin.topics().createPartitionedTopic(partitionedTopicName.getPartitionedTopicName(), partitions);
+        transactionBufferClientMetricsRegistry = new CollectorRegistry();
         tbClient = TransactionBufferClientImpl.create(pulsarServiceList.get(0),
-                new HashedWheelTimer(new DefaultThreadFactory("transaction-buffer")), 1000, 3000);
+                new HashedWheelTimer(new DefaultThreadFactory("transaction-buffer")), 1000, 3000,
+                transactionBufferClientMetricsRegistry);
     }
 
     @Override
@@ -278,38 +277,34 @@ public class TransactionBufferClientTest extends TransactionTestBase {
             tbClient.abortTxnOnSubscription(topic, "test", 1L, i, -1L).get();
         }
 
-        @Cleanup
-        ByteArrayOutputStream statsOut = new ByteArrayOutputStream();
-        PrometheusMetricsTestUtil.generate(pulsarServiceList.get(0), true, false, false, statsOut);
-        String metricsStr = statsOut.toString();
-        Multimap<String, Metric> metricsMap = parseMetrics(metricsStr);
-
-        Collection<Metric> abortFailed = metricsMap.get("pulsar_txn_tb_client_abort_failed_total");
-        Collection<Metric> commitFailed = metricsMap.get("pulsar_txn_tb_client_commit_failed_total");
-        Collection<Metric> abortLatencyCount =
-                metricsMap.get("pulsar_txn_tb_client_abort_latency_count");
-        Collection<Metric> commitLatencyCount =
-                metricsMap.get("pulsar_txn_tb_client_commit_latency_count");
-        Collection<Metric> pending = metricsMap.get("pulsar_txn_tb_client_pending_requests");
-
-        assertEquals(abortFailed.stream().mapToDouble(metric -> metric.value).sum(), 0);
-        assertEquals(commitFailed.stream().mapToDouble(metric -> metric.value).sum(), 0);
+        var samples = Collections.list(transactionBufferClientMetricsRegistry.metricFamilySamples())
+                .stream().flatMap(metric -> metric.samples.stream()).toList();
+        assertThat(samples.stream()
+                .filter(sample -> sample.name.equals("pulsar_txn_tb_client_abort_failed_total"))
+                .mapToDouble(sample -> sample.value).sum()).isZero();
+        assertThat(samples.stream()
+                .filter(sample -> sample.name.equals("pulsar_txn_tb_client_commit_failed_total"))
+                .mapToDouble(sample -> sample.value).sum()).isZero();
 
         for (int i = 0; i < partitions; i++) {
             String topic = partitionedTopicName.getPartition(i).toString();
-            Optional<Metric> optional = abortLatencyCount.stream()
-                    .filter(metric -> metric.tags.get("topic").equals(topic)).findFirst();
+            var abortLatencyCount = samples.stream()
+                    .filter(sample -> sample.name.equals("pulsar_txn_tb_client_abort_latency_count"))
+                    .filter(sample -> sample.labelValues.get(sample.labelNames.indexOf("topic")).equals(topic))
+                    .findFirst();
+            assertTrue(abortLatencyCount.isPresent());
+            assertEquals(abortLatencyCount.get().value, 1D);
 
-            assertTrue(optional.isPresent());
-            assertEquals(optional.get().value, 1D);
-
-            Optional<Metric> optional1 = commitLatencyCount.stream()
-                    .filter(metric -> metric.tags.get("topic").equals(topic)).findFirst();
-            assertTrue(optional1.isPresent());
-            assertEquals(optional1.get().value, 1D);
+            var commitLatencyCount = samples.stream()
+                    .filter(sample -> sample.name.equals("pulsar_txn_tb_client_commit_latency_count"))
+                    .filter(sample -> sample.labelValues.get(sample.labelNames.indexOf("topic")).equals(topic))
+                    .findFirst();
+            assertTrue(commitLatencyCount.isPresent());
+            assertEquals(commitLatencyCount.get().value, 1D);
         }
-
-        assertEquals(pending.size(), 1);
+        assertThat(samples.stream()
+                .filter(sample -> sample.name.equals("pulsar_txn_tb_client_pending_requests"))
+                .count()).isEqualTo(1);
     }
 
     /**

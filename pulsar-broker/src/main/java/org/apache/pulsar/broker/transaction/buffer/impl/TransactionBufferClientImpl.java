@@ -19,6 +19,7 @@
 package org.apache.pulsar.broker.transaction.buffer.impl;
 
 import io.netty.util.HashedWheelTimer;
+import io.prometheus.client.CollectorRegistry;
 import java.util.concurrent.CompletableFuture;
 import lombok.CustomLog;
 import org.apache.pulsar.broker.PulsarServerException;
@@ -40,21 +41,37 @@ public class TransactionBufferClientImpl implements TransactionBufferClient {
     private final TransactionBufferClientStats stats;
 
     private TransactionBufferClientImpl(PulsarService pulsarService, TransactionBufferHandler tbHandler,
-                                        boolean exposeTopicLevelMetrics, boolean enableTxnCoordinator) {
+                                        boolean exposeTopicLevelMetrics, boolean enableTxnCoordinator,
+                                        CollectorRegistry collectorRegistry) {
         this.tbHandler = tbHandler;
-        this.stats = TransactionBufferClientStats.create(pulsarService, exposeTopicLevelMetrics, tbHandler,
-                enableTxnCoordinator);
+        this.stats = enableTxnCoordinator
+                ? new TransactionBufferClientStatsImpl(pulsarService, exposeTopicLevelMetrics, tbHandler,
+                        collectorRegistry)
+                : TransactionBufferClientStats.NOOP;
     }
 
     public static TransactionBufferClient create(PulsarService pulsarService, HashedWheelTimer timer,
         int maxConcurrentRequests, long operationTimeoutInMills) throws PulsarServerException {
+        return create(pulsarService, timer, maxConcurrentRequests, operationTimeoutInMills,
+                CollectorRegistry.defaultRegistry);
+    }
+
+    public static TransactionBufferClient create(PulsarService pulsarService, HashedWheelTimer timer,
+        int maxConcurrentRequests, long operationTimeoutInMills, CollectorRegistry collectorRegistry)
+            throws PulsarServerException {
         TransactionBufferHandler handler = new TransactionBufferHandlerImpl(pulsarService, timer,
                 maxConcurrentRequests, operationTimeoutInMills);
 
-        ServiceConfiguration config = pulsarService.getConfig();
-        boolean exposeTopicLevelMetrics = config.isExposeTopicLevelMetricsInPrometheus();
-        boolean enableTxnCoordinator = config.isTransactionCoordinatorEnabled();
-        return new TransactionBufferClientImpl(pulsarService, handler, exposeTopicLevelMetrics, enableTxnCoordinator);
+        try {
+            ServiceConfiguration config = pulsarService.getConfig();
+            boolean exposeTopicLevelMetrics = config.isExposeTopicLevelMetricsInPrometheus();
+            boolean enableTxnCoordinator = config.isTransactionCoordinatorEnabled();
+            return new TransactionBufferClientImpl(pulsarService, handler, exposeTopicLevelMetrics,
+                    enableTxnCoordinator, collectorRegistry);
+        } catch (RuntimeException | Error e) {
+            handler.close();
+            throw e;
+        }
     }
 
     @Override
@@ -118,8 +135,11 @@ public class TransactionBufferClientImpl implements TransactionBufferClient {
 
     @Override
     public void close() {
-        tbHandler.close();
-        this.stats.close();
+        try {
+            tbHandler.close();
+        } finally {
+            this.stats.close();
+        }
     }
 
     @Override

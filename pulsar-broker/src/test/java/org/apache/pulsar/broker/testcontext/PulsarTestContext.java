@@ -23,6 +23,7 @@ import io.netty.channel.EventLoopGroup;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdkBuilder;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
+import io.prometheus.client.CollectorRegistry;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -179,6 +180,7 @@ public class PulsarTestContext implements AutoCloseable {
 
     private final boolean enableOpenTelemetry;
     private final InMemoryMetricReader openTelemetryMetricReader;
+    private final CollectorRegistry prometheusMetricsRegistry;
 
     private final WorkerService functionWorkerService;
 
@@ -936,7 +938,7 @@ public class PulsarTestContext implements AutoCloseable {
             } else {
                 openTelemetrySdkBuilderCustomizer = null;
             }
-            PulsarService pulsarService = spyConfig.getPulsarService()
+            StartableTestPulsarService pulsarService = spyConfig.getPulsarService()
                     .spy(StartableTestPulsarService.class, spyConfig, builder.config, builder.localMetadataStore,
                             builder.configurationMetadataStore, compactionServiceFactory,
                             builder.brokerInterceptor,
@@ -950,6 +952,7 @@ public class PulsarTestContext implements AutoCloseable {
                 resetSpyOrMock(pulsarService);
             });
             pulsarService(pulsarService);
+            prometheusMetricsRegistry(pulsarService.getPrometheusMetricsRegistry());
         }
 
         @Override

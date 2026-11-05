@@ -18,10 +18,6 @@
  */
 package org.apache.pulsar.broker.transaction.buffer;
 
-import org.apache.pulsar.broker.PulsarService;
-import org.apache.pulsar.broker.transaction.buffer.impl.TransactionBufferClientStatsImpl;
-import org.apache.pulsar.client.impl.transaction.TransactionBufferHandler;
-
 public interface TransactionBufferClientStats {
 
     void recordAbortFailed(String topic);
@@ -33,14 +29,6 @@ public interface TransactionBufferClientStats {
     void recordCommitLatency(String topic, long nanos);
 
     void close();
-
-
-    static TransactionBufferClientStats create(PulsarService pulsarService, boolean exposeTopicMetrics,
-                                               TransactionBufferHandler handler, boolean enableTxnCoordinator) {
-        return enableTxnCoordinator
-                ? TransactionBufferClientStatsImpl.getInstance(pulsarService, exposeTopicMetrics, handler) : NOOP;
-    }
-
 
     TransactionBufferClientStats NOOP = new TransactionBufferClientStats() {
         @Override

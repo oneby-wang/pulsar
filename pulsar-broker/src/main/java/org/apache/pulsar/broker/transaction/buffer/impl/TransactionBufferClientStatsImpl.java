@@ -19,10 +19,13 @@
 package org.apache.pulsar.broker.transaction.buffer.impl;
 
 import io.opentelemetry.api.metrics.ObservableLongUpDownCounter;
+import io.prometheus.client.Collector;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Counter;
 import io.prometheus.client.Gauge;
 import io.prometheus.client.Summary;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -61,11 +64,14 @@ public final class TransactionBufferClientStatsImpl implements TransactionBuffer
 
     private final BrokerService brokerService;
 
-    private static TransactionBufferClientStats instance;
+    private final CollectorRegistry collectorRegistry;
+    private final List<Collector> collectors;
 
-    private TransactionBufferClientStatsImpl(@NonNull PulsarService pulsarService,
-                                             boolean exposeTopicLevelMetrics,
-                                             @NonNull TransactionBufferHandler handler) {
+    TransactionBufferClientStatsImpl(@NonNull PulsarService pulsarService,
+                                    boolean exposeTopicLevelMetrics,
+                                    @NonNull TransactionBufferHandler handler,
+                                    @NonNull CollectorRegistry collectorRegistry) {
+        this.collectorRegistry = collectorRegistry;
         this.brokerService = Objects.requireNonNull(pulsarService.getBrokerService());
         this.exposeTopicLevelMetrics = exposeTopicLevelMetrics;
         String[] labelNames = exposeTopicLevelMetrics
@@ -73,28 +79,39 @@ public final class TransactionBufferClientStatsImpl implements TransactionBuffer
 
         this.abortFailed = Counter.build("pulsar_txn_tb_client_abort_failed", "-")
                 .labelNames(labelNames)
-                .register();
+                .create();
         this.commitFailed = Counter.build("pulsar_txn_tb_client_commit_failed", "-")
                 .labelNames(labelNames)
-                .register();
+                .create();
         this.abortLatency =
                 this.buildSummary("pulsar_txn_tb_client_abort_latency", "-", labelNames);
         this.commitLatency =
                 this.buildSummary("pulsar_txn_tb_client_commit_latency", "-", labelNames);
 
         this.pendingRequests = Gauge.build("pulsar_txn_tb_client_pending_requests", "-")
-                .register()
+                .create()
                 .setChild(new Gauge.Child() {
                     @Override
                     public double get() {
                         return handler.getPendingRequestsCount();
                     }
                 });
-        this.pendingTransactionCounter = pulsarService.getOpenTelemetry().getMeter()
-                .upDownCounterBuilder(PENDING_TRANSACTION_COUNTER)
-                .setDescription("The number of pending transactions in the transaction buffer client.")
-                .setUnit("{transaction}")
-                .buildWithCallback(measurement -> measurement.record(handler.getPendingRequestsCount()));
+        this.collectors = List.of(abortFailed, commitFailed, abortLatency, commitLatency, pendingRequests);
+        List<Collector> registered = new ArrayList<>();
+        try {
+            for (Collector collector : collectors) {
+                collectorRegistry.register(collector);
+                registered.add(collector);
+            }
+            this.pendingTransactionCounter = pulsarService.getOpenTelemetry().getMeter()
+                    .upDownCounterBuilder(PENDING_TRANSACTION_COUNTER)
+                    .setDescription("The number of pending transactions in the transaction buffer client.")
+                    .setUnit("{transaction}")
+                    .buildWithCallback(measurement -> measurement.record(handler.getPendingRequestsCount()));
+        } catch (RuntimeException | Error e) {
+            registered.forEach(collectorRegistry::unregister);
+            throw e;
+        }
     }
 
     private Summary buildSummary(String name, String help, String[] labelNames) {
@@ -103,16 +120,7 @@ public final class TransactionBufferClientStatsImpl implements TransactionBuffer
         for (double quantile : QUANTILES) {
             builder.quantile(quantile, 0.01D);
         }
-        return builder.register();
-    }
-
-    public static synchronized TransactionBufferClientStats getInstance(PulsarService pulsarService,
-                                                                        boolean exposeTopicLevelMetrics,
-                                                                        TransactionBufferHandler handler) {
-        if (null == instance) {
-            instance = new TransactionBufferClientStatsImpl(pulsarService, exposeTopicLevelMetrics, handler);
-        }
-        return instance;
+        return builder.create();
     }
 
     @Override
@@ -167,13 +175,11 @@ public final class TransactionBufferClientStatsImpl implements TransactionBuffer
     @Override
     public void close() {
         if (this.closed.compareAndSet(false, true)) {
-            instance = null;
-            CollectorRegistry.defaultRegistry.unregister(this.abortFailed);
-            CollectorRegistry.defaultRegistry.unregister(this.commitFailed);
-            CollectorRegistry.defaultRegistry.unregister(this.abortLatency);
-            CollectorRegistry.defaultRegistry.unregister(this.commitLatency);
-            CollectorRegistry.defaultRegistry.unregister(this.pendingRequests);
-            pendingTransactionCounter.close();
+            try {
+                pendingTransactionCounter.close();
+            } finally {
+                collectors.forEach(collectorRegistry::unregister);
+            }
         }
     }
 }

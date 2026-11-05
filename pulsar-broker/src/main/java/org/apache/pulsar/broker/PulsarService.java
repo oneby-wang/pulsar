@@ -32,6 +32,7 @@ import io.netty.util.Timer;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdkBuilder;
+import io.prometheus.client.CollectorRegistry;
 import jakarta.servlet.Servlet;
 import jakarta.servlet.ServletException;
 import jakarta.ws.rs.core.Response;
@@ -1120,7 +1121,8 @@ public class PulsarService implements AutoCloseable, ShutdownService {
                         new HashedWheelTimer(new DefaultThreadFactory("pulsar-transaction-timer"));
                 transactionBufferClient = TransactionBufferClientImpl.create(this, transactionTimer,
                         config.getTransactionBufferClientMaxConcurrentRequests(),
-                        config.getTransactionBufferClientOperationTimeoutInMills());
+                        config.getTransactionBufferClientOperationTimeoutInMills(),
+                        getPrometheusMetricsRegistry());
 
                 transactionMetadataStoreService = new TransactionMetadataStoreService(TransactionMetadataStoreProvider
                         .newProvider(config.getTransactionMetadataStoreProviderClassName()), this,
@@ -1244,6 +1246,11 @@ public class PulsarService implements AutoCloseable, ShutdownService {
 
     public void waitUntilReadyForIncomingRequests() throws ExecutionException, InterruptedException {
         readyForIncomingRequestsFuture.get();
+    }
+
+    @VisibleForTesting
+    protected CollectorRegistry getPrometheusMetricsRegistry() {
+        return CollectorRegistry.defaultRegistry;
     }
 
     protected BrokerInterceptor newBrokerInterceptor() throws IOException {

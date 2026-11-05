@@ -20,6 +20,7 @@
 package org.apache.pulsar.broker.testcontext;
 
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdkBuilder;
+import io.prometheus.client.CollectorRegistry;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -43,6 +44,7 @@ import org.apache.pulsar.metadata.api.extended.MetadataStoreExtended;
  */
 class StartableTestPulsarService extends AbstractTestPulsarService {
     private final Function<BrokerService, BrokerService> brokerServiceCustomizer;
+    private final CollectorRegistry prometheusMetricsRegistry = new CollectorRegistry();
 
     public StartableTestPulsarService(SpyConfig spyConfig, ServiceConfiguration config,
                                   MetadataStoreExtended localMetadataStore,
@@ -56,6 +58,11 @@ class StartableTestPulsarService extends AbstractTestPulsarService {
         super(spyConfig, config, localMetadataStore, configurationMetadataStore, compactionServiceFactory,
                 brokerInterceptor, bookKeeperClientFactory, openTelemetrySdkBuilderCustomizer, functionWorkerService);
         this.brokerServiceCustomizer = brokerServiceCustomizer;
+    }
+
+    @Override
+    protected CollectorRegistry getPrometheusMetricsRegistry() {
+        return prometheusMetricsRegistry;
     }
 
     @Override
